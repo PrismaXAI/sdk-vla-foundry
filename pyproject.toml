@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prismax"
+version = "0.1.0"
+description = "PrismaX Python SDK"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.31.0",
+]
+authors = [
+    {name = "PrismaX"},
+]
+
+[project.scripts]
+prismax = "prismax.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["prismax*"]
