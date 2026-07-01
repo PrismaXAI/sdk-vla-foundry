@@ -14,11 +14,12 @@ def main(argv=None):
 
     upload_parser = subparsers.add_parser("upload")
     upload_parser.add_argument("folder")
-    upload_parser.add_argument("--task-id", required=True)
+    upload_parser.add_argument("--task-id", required=True, type=int)
     upload_parser.add_argument("--machine-id", required=True)
     upload_parser.add_argument("--api-key")
     upload_parser.add_argument("--base-url")
     upload_parser.add_argument("--wait", action="store_true")
+    upload_parser.add_argument("--max-wait", type=int, default=1800)
     upload_parser.add_argument("--concurrency", type=int, default=5)
 
     resume_parser = subparsers.add_parser("resume")
@@ -27,6 +28,7 @@ def main(argv=None):
     resume_parser.add_argument("--api-key")
     resume_parser.add_argument("--base-url")
     resume_parser.add_argument("--wait", action="store_true")
+    resume_parser.add_argument("--max-wait", type=int, default=1800)
     resume_parser.add_argument("--concurrency", type=int, default=5)
 
     status_parser = subparsers.add_parser("status")
@@ -44,6 +46,7 @@ def main(argv=None):
             api_key=args.api_key,
             base_url=args.base_url,
             wait=args.wait,
+            max_wait=args.max_wait,
             concurrency=args.concurrency,
         )
         _print_json(result)
@@ -56,6 +59,7 @@ def main(argv=None):
             api_key=args.api_key,
             base_url=args.base_url,
             wait=args.wait,
+            max_wait=args.max_wait,
             concurrency=args.concurrency,
         )
         _print_json(result)

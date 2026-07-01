@@ -1,7 +1,7 @@
 import time
 
 from .client import PrismaXClient
-from .errors import PrismaxValidationError
+from .errors import PrismaxApiError, PrismaxValidationError
 from .manifest import build_manifest_payload, manifest_placeholder
 from .scanner import scan_folder, validate_mcap_mp4, episode_keys
 
@@ -29,6 +29,7 @@ def upload(
     base_url=None,
     wait=False,
     poll_interval=10,
+    max_wait=1800,
     timeout=60,
     concurrency=5,
 ):
@@ -64,6 +65,7 @@ def upload(
             api_key=api_key,
             base_url=base_url,
             poll_interval=poll_interval,
+            max_wait=max_wait,
             timeout=timeout,
         )
     return _public_session_result(session)
@@ -77,6 +79,7 @@ def resume(
     base_url=None,
     wait=False,
     poll_interval=10,
+    max_wait=1800,
     timeout=60,
     concurrency=5,
 ):
@@ -111,6 +114,7 @@ def resume(
             api_key=api_key,
             base_url=base_url,
             poll_interval=poll_interval,
+            max_wait=max_wait,
             timeout=timeout,
         )
     return _public_session_result(session)
@@ -121,12 +125,20 @@ def status(upload_id, *, api_key=None, base_url=None, timeout=60):
     return client.get_upload(upload_id)
 
 
-def wait_for_upload(upload_id, *, api_key=None, base_url=None, poll_interval=10, timeout=60):
+def wait_for_upload(upload_id, *, api_key=None, base_url=None, poll_interval=10, max_wait=1800, timeout=60):
     client = PrismaXClient(api_key=api_key, base_url=base_url, timeout=timeout)
+    started_at = time.monotonic()
+    last_status = None
     while True:
         current = client.get_upload(upload_id)
-        if str(current.get("status") or "").upper() in TERMINAL_STATUSES:
+        last_status = str(current.get("status") or "").upper()
+        if last_status in TERMINAL_STATUSES:
             return current
+        if max_wait is not None and time.monotonic() - started_at >= int(max_wait):
+            raise PrismaxApiError(
+                f"Timed out waiting for upload {upload_id} after {int(max_wait)} seconds "
+                f"(last status: {last_status or 'unknown'})."
+            )
         time.sleep(max(1, int(poll_interval)))
 
 

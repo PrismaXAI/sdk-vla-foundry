@@ -5,15 +5,34 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "prismax"
 version = "0.1.0"
-description = "PrismaX Python SDK"
+description = "PrismaX Python SDK for data uploads"
 readme = "README.md"
 requires-python = ">=3.9"
+license = {text = "PolyForm Noncommercial License 1.0.0"}
+keywords = ["prismax", "upload", "sdk", "robotics", "mcap"]
 dependencies = [
     "requests>=2.31.0",
 ]
 authors = [
     {name = "PrismaX"},
 ]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: Other/Proprietary License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/ChrisPrismax/prismax-sdk-python"
+Repository = "https://github.com/ChrisPrismax/prismax-sdk-python"
+Issues = "https://github.com/ChrisPrismax/prismax-sdk-python/issues"
 
 [project.scripts]
 prismax = "prismax.cli:main"
