@@ -2,6 +2,7 @@ import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from importlib.metadata import PackageNotFoundError, version
 from urllib.parse import urlparse
 
 import requests
@@ -11,6 +12,13 @@ from .errors import PrismaxApiError, PrismaxAuthError, PrismaxValidationError
 
 DEFAULT_BASE_URL = "https://data.prismaxserver.com"
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _sdk_version():
+    try:
+        return version("prismax")
+    except PackageNotFoundError:
+        return "0.1.0"
 
 
 def _validate_base_url(base_url):
@@ -42,6 +50,7 @@ class PrismaXClient:
         return {
             "X-API-Key": self.api_key,
             "Content-Type": "application/json",
+            "User-Agent": f"prismax-sdk/{_sdk_version()}",
         }
 
     def _request(self, method, path, **kwargs):
@@ -64,6 +73,8 @@ class PrismaXClient:
 
         if not response.ok or payload.get("success") is False:
             message = payload.get("msg") or payload.get("error") or f"PrismaX API request failed: {response.status_code}"
+            if response.status_code in (401, 403):
+                raise PrismaxAuthError(message)
             raise PrismaxApiError(message)
         return payload.get("data", payload)
 
@@ -88,7 +99,8 @@ class PrismaXClient:
     def get_upload(self, upload_id):
         return self._request("GET", f"/v1/data/uploads/{upload_id}")
 
-    def upload_file_to_signed_url(self, *, signed_url, path, content_type):
+    def upload_file_to_signed_url(self, *, signed_url, path, content_type, relative_path=None):
+        display_path = relative_path or path
         for attempt in range(1, self.retries + 1):
             try:
                 with open(path, "rb") as handle:
@@ -105,7 +117,7 @@ class PrismaXClient:
                 message = str(exc)
 
             if attempt == self.retries:
-                raise PrismaxApiError(message)
+                raise PrismaxApiError(f"Failed to upload {display_path}: {message}")
             time.sleep(min(2 ** attempt, 10))
 
     def upload_json_to_signed_url(self, *, signed_url, payload):
@@ -138,6 +150,7 @@ class PrismaXClient:
                     signed_url=item["signed_url"],
                     path=item["path"],
                     content_type=item["content_type"],
+                    relative_path=item.get("relative_path"),
                 )
                 for item in upload_items
             ]

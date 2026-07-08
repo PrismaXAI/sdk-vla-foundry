@@ -6,7 +6,8 @@ from .errors import PrismaxValidationError
 
 
 MANIFEST_FILENAME = "_MANIFEST.json"
-REQUIRED_VIDEO_COUNT = 3
+MIN_VIDEO_COUNT = 3
+VIDEO_SLOTS = ("env", "left", "right")
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,37 @@ def _video_slot(file_name: str) -> str:
     return "env"
 
 
+def _primary_sort_key(file_name: str, slot: str):
+    base_name = Path(str(file_name or "")).name.lower()
+    stem = base_name.rsplit(".", 1)[0]
+    exact_primary = {
+        "env": {"high", "env"},
+        "left": {"left"},
+        "right": {"right"},
+    }
+    return (0 if stem in exact_primary.get(slot, set()) else 1, base_name)
+
+
+def _is_hidden_path(path: Path) -> bool:
+    return any(part.startswith(".") for part in path.parts)
+
+
+def select_primary_video_paths(video_paths: list[str]) -> dict[str, str]:
+    """Return the deterministic primary env/left/right paths from a list of mp4 paths."""
+    grouped = {slot: [] for slot in VIDEO_SLOTS}
+    for path in video_paths:
+        if not str(path).endswith(".mp4"):
+            continue
+        slot = _video_slot(Path(str(path)).name)
+        grouped[slot].append(path)
+    selected = {}
+    for slot in VIDEO_SLOTS:
+        candidates = sorted(grouped[slot], key=lambda item: _primary_sort_key(Path(str(item)).name, slot))
+        if candidates:
+            selected[slot] = candidates[0]
+    return selected
+
+
 def scan_folder(folder) -> list[LocalFile]:
     root = Path(folder).expanduser().resolve()
     if not root.exists():
@@ -55,7 +87,7 @@ def scan_folder(folder) -> list[LocalFile]:
         if not path.is_file():
             continue
         relative_path = path.relative_to(root).as_posix()
-        if relative_path == ".DS_Store" or relative_path.endswith("/.DS_Store"):
+        if _is_hidden_path(Path(relative_path)):
             continue
         if relative_path == MANIFEST_FILENAME or relative_path.endswith(f"/{MANIFEST_FILENAME}"):
             continue
@@ -80,7 +112,7 @@ def validate_mcap_mp4(files: list[LocalFile]) -> list[str]:
             stats[episode_key] = {
                 "mcap_count": 0,
                 "mp4_count": 0,
-                "video_slots": {"env": 0, "left": 0, "right": 0},
+                "video_paths": [],
             }
         return stats[episode_key]
 
@@ -103,7 +135,7 @@ def validate_mcap_mp4(files: list[LocalFile]) -> list[str]:
                 continue
             episode_stats = ensure_episode(folder_name)
             episode_stats["mp4_count"] += 1
-            episode_stats["video_slots"][_video_slot(file_name)] += 1
+            episode_stats["video_paths"].append(relative_path)
             continue
 
         if relative_path.endswith(".mcap"):
@@ -119,7 +151,7 @@ def validate_mcap_mp4(files: list[LocalFile]) -> list[str]:
     episode_keys = sorted(stats.keys())
     if not episode_keys:
         errors.append(
-            "No valid episodes found. Expected {episode}.mcap at root and exactly "
+            "No valid episodes found. Expected {episode}.mcap at root and at least "
             "3 .mp4 files under {episode}/."
         )
 
@@ -130,18 +162,19 @@ def validate_mcap_mp4(files: list[LocalFile]) -> list[str]:
                 f"Episode {episode_key} must have exactly 1 .mcap file "
                 f"(found {episode_stats['mcap_count']})."
             )
-        if episode_stats["mp4_count"] != REQUIRED_VIDEO_COUNT:
+        if episode_stats["mp4_count"] < MIN_VIDEO_COUNT:
             errors.append(
-                f"Episode {episode_key} must have exactly {REQUIRED_VIDEO_COUNT} "
+                f"Episode {episode_key} must have at least {MIN_VIDEO_COUNT} "
                 f".mp4 files (found {episode_stats['mp4_count']})."
             )
         else:
-            slots = episode_stats["video_slots"]
-            if slots["left"] != 1 or slots["right"] != 1 or slots["env"] != 1:
+            primary_videos = select_primary_video_paths(episode_stats["video_paths"])
+            missing_slots = [slot for slot in VIDEO_SLOTS if slot not in primary_videos]
+            if missing_slots:
                 errors.append(
-                    f"Episode {episode_key} must include one left MP4, one right MP4, "
-                    'and one environment MP4. Use one filename containing "left", '
-                    'one containing "right", and one containing neither.'
+                    f"Episode {episode_key} must include primary env/high, left, and right MP4s "
+                    f"(missing: {', '.join(missing_slots)}). Use one filename containing "
+                    '"left", one containing "right", and one containing neither.'
                 )
 
     return errors
