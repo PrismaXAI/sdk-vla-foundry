@@ -10,13 +10,18 @@ grants a separate commercial license.
 
 ## Quickstart
 
+You need:
+
+- a PrismaX upload API key with the `pxu_` prefix
+- a PrismaX task ID
+- the robot serial number for the machine that produced the data
+
 ```bash
 pip install prismax
 export PRISMAX_API_KEY="pxu_your_upload_api_key"
 ```
 
-Use a PrismaX upload API key with the `pxu_` prefix. Download API keys are not
-valid for uploads.
+Download API keys are not valid for uploads.
 
 ```python
 import prismax
@@ -69,6 +74,44 @@ so client validation, worker processing, and download manifests choose the same
 primary videos. Hidden files are ignored, including macOS metadata files such as
 `.DS_Store` and `._left.mp4`.
 
+Primary video selection is based on filename:
+
+- filenames containing `left` are treated as left videos
+- filenames containing `right` are treated as right videos
+- other MP4 files are treated as environment/high videos
+- exact names are preferred, for example `high.mp4`, `left.mp4`, and
+  `right.mp4` are selected before `high2.mp4`, `left2.mp4`, and `right2.mp4`
+
+Example:
+
+```text
+data/
+  1.mcap
+  1/
+    high.mp4
+    left.mp4
+    right.mp4
+    high2.mp4
+    left2.mp4
+    right2.mp4
+```
+
+Primary videos:
+
+```text
+env/high: high.mp4
+left: left.mp4
+right: right.mp4
+```
+
+Additional videos:
+
+```text
+high2.mp4
+left2.mp4
+right2.mp4
+```
+
 ## CLI
 
 ```bash
@@ -111,30 +154,9 @@ prismax resume 123 ./data
 
 Resume expects the same complete upload folder/file list, not only the files
 that are missing from cloud storage. The SDK will ask the API which files still
-need signed upload URLs. Backend resume is only allowed while the upload is
-still in `UPLOADING` status; once the worker has started or the upload reaches a
-terminal status, create a new upload instead.
-
-Deployment note for SDK/client maintainers: deploy backend and worker support
-for additional videos before releasing clients that allow more than three MP4s
-per episode.
-
-## Custom API Base URL
-
-The SDK defaults to the PrismaX production data API. For beta or local testing,
-pass `base_url` explicitly. It must use `https://`; plain `http://` is only
-allowed for `localhost` / `127.0.0.1`.
-
-```python
-import prismax
-
-prismax.upload(
-    "./data",
-    task_id=123,
-    serial_number="robot_serial_number",
-    base_url="http://127.0.0.1:8082",
-)
-```
+need signed upload URLs. Resume is only allowed while the upload is still in
+`UPLOADING` status; once processing has started or the upload reaches a terminal
+status, create a new upload instead.
 
 ## Error Handling
 
