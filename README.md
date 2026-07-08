@@ -157,6 +157,10 @@ prismax upload ./data --scenario "Pick and place packaged food items" --serial-n
 
 ## Status and Resume
 
+Status and resume require a PrismaX upload API key, either from
+`PRISMAX_API_KEY` or the `api_key=` argument. Use an upload key with access to
+the original upload; download API keys are not valid.
+
 ```python
 import prismax
 
@@ -164,7 +168,7 @@ upload_status = prismax.status(123)
 
 resume_result = prismax.resume(
     123,
-    "./data",
+    "./data",  # same original folder used for the upload
 )
 ```
 
@@ -173,11 +177,12 @@ prismax status 123
 prismax resume 123 ./data
 ```
 
-Resume expects the same complete upload folder/file list, not only the files
-that are missing from cloud storage. The SDK will ask the API which files still
-need signed upload URLs. Resume is only allowed while the upload is still in
-`UPLOADING` status; once processing has started or the upload reaches a terminal
-status, create a new upload instead.
+Resume expects the same original complete upload folder/file list, not only the
+files that are missing from cloud storage. Do not pass a folder that contains
+only failed or remaining files. The SDK will ask the API which files still need
+signed upload URLs. Resume is only allowed while the upload is still in
+`UPLOADING` status; once processing has started or the upload reaches a
+terminal status, create a new upload instead.
 
 ## Error Handling
 
@@ -199,4 +204,4 @@ except prismax.PrismaxApiError as exc:
 ```
 
 If raw file upload fails after the session is created, the SDK error includes
-the upload ID and a `prismax resume <upload_id> <folder>` command.
+the upload ID and a `prismax resume <upload_id> <original_folder>` command.

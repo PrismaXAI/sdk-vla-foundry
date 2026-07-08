@@ -10,6 +10,19 @@ def _print_json(payload):
     print(json.dumps(payload, indent=2, default=str))
 
 
+def _print_summary(payload):
+    fields = [
+        ("Upload ID", payload.get("upload_id")),
+        ("Status", payload.get("status")),
+        ("Episodes", payload.get("episode_count")),
+        ("Serial number", payload.get("serial_number")),
+        ("Created at", payload.get("created_at")),
+    ]
+    for label, value in fields:
+        if value is not None:
+            print(f"{label}: {value}")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="prismax")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -29,10 +42,11 @@ def main(argv=None):
     upload_parser.add_argument("--retries", type=int, default=3)
     upload_parser.add_argument("--max-poll-errors", type=int, default=3)
     upload_parser.add_argument("--concurrency", type=int, default=5)
+    upload_parser.add_argument("--json", action="store_true", help="Print the full raw API response.")
 
     resume_parser = subparsers.add_parser("resume")
     resume_parser.add_argument("upload_id", type=int)
-    resume_parser.add_argument("folder")
+    resume_parser.add_argument("folder", help="The same complete folder used for the original upload.")
     resume_parser.add_argument("--api-key")
     resume_parser.add_argument("--base-url")
     resume_parser.add_argument("--wait", action="store_true")
@@ -42,6 +56,7 @@ def main(argv=None):
     resume_parser.add_argument("--retries", type=int, default=3)
     resume_parser.add_argument("--max-poll-errors", type=int, default=3)
     resume_parser.add_argument("--concurrency", type=int, default=5)
+    resume_parser.add_argument("--json", action="store_true", help="Print the full raw API response.")
 
     status_parser = subparsers.add_parser("status")
     status_parser.add_argument("upload_id", type=int)
@@ -49,6 +64,7 @@ def main(argv=None):
     status_parser.add_argument("--base-url")
     status_parser.add_argument("--timeout", type=int, default=60)
     status_parser.add_argument("--retries", type=int, default=3)
+    status_parser.add_argument("--json", action="store_true", help="Print the full raw API response.")
 
     args = parser.parse_args(argv)
 
@@ -69,7 +85,10 @@ def main(argv=None):
                 concurrency=args.concurrency,
                 retries=args.retries,
             )
-            _print_json(result)
+            if args.json:
+                _print_json(result)
+            else:
+                _print_summary(result)
             return 0
 
         if args.command == "resume":
@@ -86,17 +105,24 @@ def main(argv=None):
                 concurrency=args.concurrency,
                 retries=args.retries,
             )
-            _print_json(result)
+            if args.json:
+                _print_json(result)
+            else:
+                _print_summary(result)
             return 0
 
         if args.command == "status":
-            _print_json(status(
+            result = status(
                 args.upload_id,
                 api_key=args.api_key,
                 base_url=args.base_url,
                 timeout=args.timeout,
                 retries=args.retries,
-            ))
+            )
+            if args.json:
+                _print_json(result)
+            else:
+                _print_summary(result)
             return 0
     except PrismaxError as exc:
         print(f"prismax: {exc}", file=sys.stderr)

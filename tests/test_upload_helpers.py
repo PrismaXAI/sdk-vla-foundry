@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 import requests
 
 from prismax.client import PrismaXClient
+from prismax import cli
 from prismax.manifest import build_manifest_payload, manifest_placeholder
 from prismax.errors import PrismaxApiError, PrismaxAuthError, PrismaxValidationError
 from prismax.scanner import episode_keys, scan_folder, select_primary_video_paths, validate_mcap_mp4
@@ -391,6 +392,56 @@ class UploadHelperTests(unittest.TestCase):
         with patch.dict(os.environ, {"PRISMAX_BASE_URL": "http://evil.example.com"}, clear=False):
             client = PrismaXClient(api_key="pxu_test")
         self.assertEqual(client.base_url, "https://app-prismax-data-pipeline-beta-1053158761087.us-west1.run.app")
+
+    def test_cli_upload_prints_human_summary_by_default(self):
+        payload = {
+            "upload_id": 342,
+            "status": "UPLOADING",
+            "episode_count": 1,
+            "serial_number": "MD100101000019205Z00082",
+            "created_at": "Wed, 08 Jul 2026 22:53:00 GMT",
+            "bucket": "prismax-data-raw-prod",
+            "expires_at": "2026-07-09T22:53:01.263267Z",
+        }
+
+        with patch("prismax.cli.upload", return_value=payload), patch("builtins.print") as print_mock:
+            exit_code = cli.main([
+                "upload",
+                "/tmp/data",
+                "--scenario",
+                "Pick and place packaged food items",
+                "--serial-number",
+                "MD100101000019205Z00082",
+            ])
+
+        self.assertEqual(exit_code, 0)
+        printed = "\n".join(call.args[0] for call in print_mock.call_args_list)
+        self.assertIn("Upload ID: 342", printed)
+        self.assertIn("Created at: Wed, 08 Jul 2026 22:53:00 GMT", printed)
+        self.assertNotIn("prismax-data-raw-prod", printed)
+        self.assertNotIn("expires_at", printed)
+
+    def test_cli_upload_json_prints_raw_payload(self):
+        payload = {
+            "upload_id": 342,
+            "status": "UPLOADING",
+            "bucket": "prismax-data-raw-prod",
+        }
+
+        with patch("prismax.cli.upload", return_value=payload), patch("builtins.print") as print_mock:
+            exit_code = cli.main([
+                "upload",
+                "/tmp/data",
+                "--scenario",
+                "Pick and place packaged food items",
+                "--serial-number",
+                "MD100101000019205Z00082",
+                "--json",
+            ])
+
+        self.assertEqual(exit_code, 0)
+        printed = "\n".join(call.args[0] for call in print_mock.call_args_list)
+        self.assertIn('"bucket": "prismax-data-raw-prod"', printed)
 
 
 if __name__ == "__main__":
