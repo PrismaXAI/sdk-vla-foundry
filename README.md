@@ -16,6 +16,17 @@ You need:
 - a PrismaX task ID
 - the robot serial number for the machine that produced the data
 
+Create and find these in the PrismaX app:
+
+- App: <https://app.prismax.ai>
+- Upload API key: open <https://app.prismax.ai/account>, go to **API Keys**,
+  then create an **Operator / Upload** key. The key is shown once, so copy it
+  when it is created.
+- Task ID: open <https://app.prismax.ai/data/upload>, choose the task you want
+  to upload for, and use that task's ID.
+- Robot serial number: open <https://app.prismax.ai/account> and use the serial
+  number for the registered operator machine that produced the data.
+
 ```bash
 pip install prismax
 export PRISMAX_API_KEY="pxu_your_upload_api_key"
