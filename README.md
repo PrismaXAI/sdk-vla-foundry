@@ -38,6 +38,18 @@ export PRISMAX_API_KEY="pxu_your_upload_api_key"
 
 Download API keys are not valid for uploads.
 
+List available scenarios. This does not require an API key:
+
+```bash
+prismax scenarios
+```
+
+```python
+import prismax
+
+print(prismax.list_scenarios())
+```
+
 ```python
 import prismax
 
@@ -136,6 +148,7 @@ right2.mp4
 ## CLI
 
 ```bash
+prismax scenarios
 prismax upload ./data --scenario "Pick and place packaged food items" --serial-number robot_serial_number
 prismax status 123
 ```

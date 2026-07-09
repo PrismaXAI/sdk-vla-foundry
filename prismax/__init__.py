@@ -6,6 +6,7 @@ from .errors import (
     PrismaxValidationError,
 )
 from .scanner import episode_keys, scan_folder, select_primary_video_paths, validate_mcap_mp4
+from .scenarios import list_scenarios
 from .upload import resume, status, upload, wait_for_upload
 
 __version__ = "0.1.3"
@@ -18,6 +19,7 @@ __all__ = [
     "PrismaxValidationError",
     "__version__",
     "episode_keys",
+    "list_scenarios",
     "resume",
     "scan_folder",
     "select_primary_video_paths",

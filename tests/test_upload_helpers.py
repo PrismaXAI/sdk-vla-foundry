@@ -7,11 +7,12 @@ from unittest.mock import Mock, patch
 
 import requests
 
-from prismax.client import PrismaXClient
 from prismax import cli
+from prismax.client import PrismaXClient
 from prismax.manifest import build_manifest_payload, manifest_placeholder
 from prismax.errors import PrismaxApiError, PrismaxAuthError, PrismaxValidationError
 from prismax.scanner import episode_keys, scan_folder, select_primary_video_paths, validate_mcap_mp4
+from prismax.scenarios import list_scenarios
 from prismax.upload import resolve_task_id, upload, wait_for_upload
 
 
@@ -270,6 +271,45 @@ class UploadHelperTests(unittest.TestCase):
             with self.assertRaises(PrismaxAuthError):
                 client.get_upload(123)
 
+    def test_client_can_list_public_tasks_without_api_key(self):
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = {
+            "success": True,
+            "data": [{"scenario": "Pick and place packaged food items"}],
+        }
+
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("prismax.client.requests.request", return_value=mock_response) as request_mock:
+                client = PrismaXClient(
+                    base_url="https://example.test",
+                    require_api_key=False,
+                )
+                tasks = client.list_tasks()
+
+        self.assertEqual(tasks, [{"scenario": "Pick and place packaged food items"}])
+        _, _, kwargs = request_mock.mock_calls[0]
+        self.assertNotIn("X-API-Key", kwargs["headers"])
+
+    def test_list_scenarios_returns_only_unique_scenario_names(self):
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = {
+            "success": True,
+            "data": [
+                {"task_id": 1, "scenario": "Pick and place packaged food items"},
+                {"task_id": 2, "scenario": "Pick and place packaged food items"},
+                {"task_id": 3, "scenario": "  "},
+                {"task_id": 4, "scenario": "Warehouse sorting"},
+            ],
+        }
+
+        with patch("prismax.client.requests.request", return_value=mock_response):
+            self.assertEqual(
+                list_scenarios(base_url="https://example.test"),
+                ["Pick and place packaged food items", "Warehouse sorting"],
+            )
+
     def test_upload_file_error_includes_relative_path(self):
         mock_response = Mock()
         mock_response.ok = False
@@ -442,6 +482,19 @@ class UploadHelperTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         printed = "\n".join(call.args[0] for call in print_mock.call_args_list)
         self.assertIn('"bucket": "prismax-data-raw-prod"', printed)
+
+    def test_cli_scenarios_prints_one_scenario_per_line(self):
+        with patch(
+            "prismax.cli.list_scenarios",
+            return_value=["Pick and place packaged food items", "Warehouse sorting"],
+        ), patch("builtins.print") as print_mock:
+            exit_code = cli.main(["scenarios"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            [call.args[0] for call in print_mock.call_args_list],
+            ["Pick and place packaged food items", "Warehouse sorting"],
+        )
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import json
 import sys
 
 from .errors import PrismaxError
+from .scenarios import list_scenarios
 from .upload import resume, status, upload
 
 
@@ -21,6 +22,11 @@ def _print_summary(payload):
     for label, value in fields:
         if value is not None:
             print(f"{label}: {value}")
+
+
+def _print_lines(values):
+    for value in values:
+        print(value)
 
 
 def main(argv=None):
@@ -65,6 +71,12 @@ def main(argv=None):
     status_parser.add_argument("--timeout", type=int, default=60)
     status_parser.add_argument("--retries", type=int, default=3)
     status_parser.add_argument("--json", action="store_true", help="Print the full raw API response.")
+
+    scenarios_parser = subparsers.add_parser("scenarios")
+    scenarios_parser.add_argument("--api-key")
+    scenarios_parser.add_argument("--base-url")
+    scenarios_parser.add_argument("--timeout", type=int, default=60)
+    scenarios_parser.add_argument("--json", action="store_true", help="Print the full raw API response.")
 
     args = parser.parse_args(argv)
 
@@ -123,6 +135,18 @@ def main(argv=None):
                 _print_json(result)
             else:
                 _print_summary(result)
+            return 0
+
+        if args.command == "scenarios":
+            result = list_scenarios(
+                api_key=args.api_key,
+                base_url=args.base_url,
+                timeout=args.timeout,
+            )
+            if args.json:
+                _print_json(result)
+            else:
+                _print_lines(result)
             return 0
     except PrismaxError as exc:
         print(f"prismax: {exc}", file=sys.stderr)

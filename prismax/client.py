@@ -37,9 +37,17 @@ def _validate_base_url(base_url):
 
 
 class PrismaXClient:
-    def __init__(self, api_key=None, base_url=None, timeout=60, concurrency=5, retries=3):
+    def __init__(
+        self,
+        api_key=None,
+        base_url=None,
+        timeout=60,
+        concurrency=5,
+        retries=3,
+        require_api_key=True,
+    ):
         self.api_key = api_key or os.getenv("PRISMAX_API_KEY")
-        if not self.api_key:
+        if require_api_key and not self.api_key:
             raise PrismaxAuthError("api_key is required or PRISMAX_API_KEY must be set.")
         self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
         _validate_base_url(self.base_url)
@@ -48,11 +56,13 @@ class PrismaXClient:
         self.retries = max(1, int(retries))
 
     def _headers(self):
-        return {
-            "X-API-Key": self.api_key,
+        headers = {
             "Content-Type": "application/json",
             "User-Agent": f"prismax-sdk/{_sdk_version()}",
         }
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
+        return headers
 
     def _request(self, method, path, **kwargs):
         url = f"{self.base_url}{path}"
