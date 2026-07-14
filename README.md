@@ -2,6 +2,10 @@
 
 Minimal upload SDK for PrismaX data uploads.
 
+GitHub repository: <https://github.com/PrismaXAI/sdk-vla-foundry>
+
+Issues and feature requests: <https://github.com/PrismaXAI/sdk-vla-foundry/issues>
+
 ## License
 
 This SDK is source-available for noncommercial use under the PolyForm

@@ -16,5 +16,6 @@ dist/
 .pytest_cache/
 .coverage
 htmlcov/
+.idea/
 
 .DS_Store
