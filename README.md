@@ -1,78 +1,100 @@
-# PrismaX Python SDK
-
-Minimal upload SDK for PrismaX data uploads.
-
-GitHub repository: <https://github.com/PrismaXAI/sdk-vla-foundry>
-
-Issues and feature requests: <https://github.com/PrismaXAI/sdk-vla-foundry/issues>
-
-## License
-
-This SDK is source-available for noncommercial use under the PolyForm
-Noncommercial License 1.0.0. Commercial use is not permitted unless PrismaX
-grants a separate commercial license.
+# Quickstart (Revised)
 
 ## Quickstart
 
-You need:
+### Step 1: Register your robot and become an Operator
 
-- a PrismaX upload API key with the `pxu_` prefix
-- a PrismaX task ID or task scenario/name
-- the robot serial number for the machine that produced the data
+Before you can create an upload API key, your account must be approved as an
+**Operator**. This is a one-time setup:
 
-Create and find these in the PrismaX app:
+1. Sign in at <https://app.prismax.ai> (create an account if you don't have one).
+2. Open <https://app.prismax.ai/account> and go to **Robots**, then click
+   **Register Robot**. Enter your robot's serial number, model, and hardware
+   details. The serial number you register here is the same one you will pass
+   to the SDK as `serial_number`.
+3. On the same account page, click **Apply to Become an Operator** and submit
+   the application. Operator status is required to upload data.
+4. Wait for approval. You will be notified by email, and your account page
+   will show your Operator status. Until you are approved, the **API Keys**
+   section will not allow creating Operator / Upload keys.
 
-- App: <https://app.prismax.ai>
-- Upload API key: open <https://app.prismax.ai/account>, go to **API Keys**,
-  then create an **Operator / Upload** key. The key is shown once, so copy it
+### Step 2: Create an upload API key
+
+Once your Operator application is approved:
+
+- Open <https://app.prismax.ai/account>, go to **API Keys**, then create an
+  **Operator / Upload** key (prefix `pxu_`). The key is shown once, so copy it
   when it is created.
-- Task scenario/name: open <https://app.prismax.ai/data/upload> and use the
-  task card title, for example `Pick and place packaged food items`. The SDK
-  resolves this to the database task ID automatically using a case-insensitive
-  match.
-- Task ID: if you already know the numeric database task ID, you can pass it
-  directly instead of the scenario/name.
-- Robot serial number: open <https://app.prismax.ai/account> and use the serial
-  number for the registered operator machine that produced the data.
+
+Download API keys are not valid for uploads.
+
+### Step 3: Install and configure the SDK
 
 ```bash
 pip install prismax
 export PRISMAX_API_KEY="pxu_your_upload_api_key"
 ```
 
-Download API keys are not valid for uploads.
-
 The published SDK defaults to the PrismaX production data API. Internal test
 environments can override the endpoint with `PRISMAX_BASE_URL`; an explicit
 `base_url=` argument takes precedence over the environment variable. Keep beta
 endpoint values in environment configuration rather than source code.
 
-List available scenarios. This does not require an API key:
+### Step 4: Find your task ID
+
+Every upload targets a task. You can query the full task table directly from
+the SDK or CLI — no need to browse the website UI. This does not require an
+API key:
 
 ```bash
 prismax scenarios
 ```
 
+Example output:
+
+```
+  ID  Scenario                                      Status
+----  --------------------------------------------  --------
+   1  Pick and place packaged food items            active
+   2  Fold and stack towels                         active
+   3  Open drawer and retrieve utensil              active
+   4  Sort objects by color into bins               active
+   5  Wipe table surface                            active
+```
+
+Or in Python:
+
 ```python
 import prismax
 
-print(prismax.list_scenarios())
+for task in prismax.list_scenarios():
+    print(task["id"], task["scenario"], task["status"])
 ```
+
+You can reference a task in either of two ways when uploading:
+
+- `task_id=1` — the numeric database task ID from the table above. This is
+  the most direct and unambiguous option.
+- `scenario="Pick and place packaged food items"` — the task scenario/name.
+  The SDK resolves this to the database task ID automatically using a
+  case-insensitive match.
+
+### Step 5: Upload
 
 ```python
 import prismax
 
 result = prismax.upload(
     "./data",
-    scenario="Pick and place packaged food items",
-    serial_number="robot_serial_number",
+    task_id=1,  # or scenario="Pick and place packaged food items"
+    serial_number="robot_serial_number",  # the serial you registered in Step 1
 )
 print(result["upload_id"])
 ```
 
-The SDK scans the folder, creates an upload session, uploads raw files to signed
-Google Cloud URLs, generates episode manifests in memory, uploads manifests last,
-and returns the upload summary.
+The SDK scans the folder, creates an upload session, uploads raw files to
+signed Google Cloud URLs, generates episode manifests in memory, uploads
+manifests last, and returns the upload summary.
 
 You can also pass the API key directly:
 
@@ -81,149 +103,18 @@ import prismax
 
 result = prismax.upload(
     "./data",
-    scenario="Pick and place packaged food items",
+    task_id=1,
     serial_number="robot_serial_number",
     api_key="pxu_your_upload_api_key",
 )
 ```
 
-You can also pass `task_id=123` instead of `scenario=...`.
+### Prerequisites summary
 
-## Expected Folder Structure
+You need:
 
-```text
-data/
-  1.mcap
-  1/
-    high.mp4
-    left.mp4
-    right.mp4
-    high2.mp4
-    left2.mp4
-    right2.mp4
-```
-
-Each episode must contain one root `{episode}.mcap` file and at least three MP4
-files under `{episode}/`: one primary filename containing `left`, one containing
-`right`, and one environment/high video filename containing neither. Additional
-MP4 files are uploaded as raw files, included in downloads, and checked for
-duration consistency. A duration mismatch across any episode videos can fail the
-upload. Only the primary three videos are processed for derived previews, QA,
-and duplicate detection.
-
-Use lowercase `.mp4` extensions. Uppercase variants such as `.MP4` are rejected
-so client validation, worker processing, and download manifests choose the same
-primary videos. Hidden files are ignored, including macOS metadata files such as
-`.DS_Store` and `._left.mp4`.
-
-Primary video selection is based on filename:
-
-- filenames containing `left` are treated as left videos
-- filenames containing `right` are treated as right videos
-- other MP4 files are treated as environment/high videos
-- exact names are preferred, for example `high.mp4`, `left.mp4`, and
-  `right.mp4` are selected before `high2.mp4`, `left2.mp4`, and `right2.mp4`
-
-Example:
-
-```text
-data/
-  1.mcap
-  1/
-    high.mp4
-    left.mp4
-    right.mp4
-    high2.mp4
-    left2.mp4
-    right2.mp4
-```
-
-Primary videos:
-
-```text
-env/high: high.mp4
-left: left.mp4
-right: right.mp4
-```
-
-Additional videos:
-
-```text
-high2.mp4
-left2.mp4
-right2.mp4
-```
-
-## CLI
-
-```bash
-prismax scenarios
-prismax upload ./data --scenario "Pick and place packaged food items" --serial-number robot_serial_number
-prismax status 123
-```
-
-Use `--wait` to wait for the worker to finish. The default maximum wait time is
-30 minutes.
-
-```bash
-prismax upload ./data --scenario "Pick and place packaged food items" --serial-number robot_serial_number --wait
-prismax upload ./data --scenario "Pick and place packaged food items" --serial-number robot_serial_number --wait --max-wait 3600
-```
-
-Useful CLI options:
-
-```bash
-prismax upload ./data --scenario "Pick and place packaged food items" --serial-number robot_serial_number --timeout 120 --retries 5
-prismax upload ./data --scenario "Pick and place packaged food items" --serial-number robot_serial_number --wait --poll-interval 5 --max-poll-errors 3
-```
-
-## Status and Resume
-
-Status and resume require a PrismaX upload API key, either from
-`PRISMAX_API_KEY` or the `api_key=` argument. Use an upload key with access to
-the original upload; download API keys are not valid.
-
-```python
-import prismax
-
-upload_status = prismax.status(123)
-
-resume_result = prismax.resume(
-    123,
-    "./data",  # same original folder used for the upload
-)
-```
-
-```bash
-prismax status 123
-prismax resume 123 ./data
-```
-
-Resume expects the same original complete upload folder/file list, not only the
-files that are missing from cloud storage. Do not pass a folder that contains
-only failed or remaining files. The SDK will ask the API which files still need
-signed upload URLs. Resume is only allowed while the upload is still in
-`UPLOADING` status; once processing has started or the upload reaches a
-terminal status, create a new upload instead.
-
-## Error Handling
-
-```python
-import prismax
-
-try:
-    prismax.upload(
-        "./data",
-        scenario="Pick and place packaged food items",
-        serial_number="robot_serial_number",
-    )
-except prismax.PrismaxValidationError as exc:
-    print(f"Invalid upload folder: {exc}")
-except prismax.PrismaxAuthError as exc:
-    print(f"API key or permission error: {exc}")
-except prismax.PrismaxApiError as exc:
-    print(f"PrismaX API error: {exc}")
-```
-
-If raw file upload fails after the session is created, the SDK error includes
-the upload ID and a `prismax resume <upload_id> <original_folder>` command.
+- an approved **Operator** account with a registered robot
+  (<https://app.prismax.ai/account>)
+- a PrismaX upload API key with the `pxu_` prefix
+- a PrismaX task ID (query with `prismax scenarios`) or task scenario/name
+- the robot serial number for the registered machine that produced the data
