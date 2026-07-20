@@ -40,11 +40,11 @@ environments can override the endpoint with `PRISMAX_BASE_URL`; an explicit
 `base_url=` argument takes precedence over the environment variable. Keep beta
 endpoint values in environment configuration rather than source code.
 
-### Step 4: Find your task ID
+### Step 4: Find a task scenario
 
-Every upload targets a task. You can query the full task table directly from
-the SDK or CLI — no need to browse the website UI. This does not require an
-API key:
+Every upload targets a task. You can query the available task scenario names
+directly from the SDK or CLI — no need to browse the website UI. This does not
+require an API key:
 
 ```bash
 prismax scenarios
@@ -53,13 +53,9 @@ prismax scenarios
 Example output:
 
 ```
-  ID  Scenario                                      Status
-----  --------------------------------------------  --------
-   1  Pick and place packaged food items            active
-   2  Fold and stack towels                         active
-   3  Open drawer and retrieve utensil              active
-   4  Sort objects by color into bins               active
-   5  Wipe table surface                            active
+Arrange flowers in vase and place on shelf
+Block manipulation
+Cleaning Showerhead
 ```
 
 Or in Python:
@@ -67,17 +63,17 @@ Or in Python:
 ```python
 import prismax
 
-for task in prismax.list_scenarios():
-    print(task["id"], task["scenario"], task["status"])
+for scenario in prismax.list_scenarios():
+    print(scenario)
 ```
 
 You can reference a task in either of two ways when uploading:
 
-- `task_id=1` — the numeric database task ID from the table above. This is
+- `scenario="Arrange flowers in vase and place on shelf"` — a task
+  scenario/name returned by `prismax scenarios`. The SDK resolves this to the
+  database task ID automatically using a case-insensitive match.
+- `task_id=1` — the numeric database task ID, if you already know it. This is
   the most direct and unambiguous option.
-- `scenario="Pick and place packaged food items"` — the task scenario/name.
-  The SDK resolves this to the database task ID automatically using a
-  case-insensitive match.
 
 ### Step 5: Upload
 
@@ -86,7 +82,7 @@ import prismax
 
 result = prismax.upload(
     "./data",
-    task_id=1,  # or scenario="Pick and place packaged food items"
+    task_id=1,  # or scenario="Arrange flowers in vase and place on shelf"
     serial_number="robot_serial_number",  # the serial you registered in Step 1
 )
 print(result["upload_id"])
@@ -116,5 +112,5 @@ You need:
 - an approved **Operator** account with a registered robot
   (<https://app.prismax.ai/account>)
 - a PrismaX upload API key with the `pxu_` prefix
-- a PrismaX task ID (query with `prismax scenarios`) or task scenario/name
+- a PrismaX task scenario/name (query with `prismax scenarios`) or a task ID
 - the robot serial number for the registered machine that produced the data
