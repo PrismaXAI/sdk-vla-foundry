@@ -516,13 +516,10 @@ class UploadHelperTests(unittest.TestCase):
         client = PrismaXClient(api_key="pxu_test", base_url="https://data.prismaxserver.com")
         self.assertEqual(client.base_url, "https://data.prismaxserver.com")
 
-    def test_default_base_url_uses_beta(self):
+    def test_default_base_url_uses_production(self):
         with patch.dict(os.environ, {}, clear=True):
             client = PrismaXClient(api_key="pxu_test")
-        self.assertEqual(
-            client.base_url,
-            "https://app-prismax-data-pipeline-beta-1053158761087.us-west1.run.app",
-        )
+        self.assertEqual(client.base_url, "https://data.prismaxserver.com")
 
     def test_base_url_uses_environment_configuration(self):
         with patch.dict(

@@ -10,9 +10,7 @@ import requests
 from .errors import PrismaxApiError, PrismaxAuthError, PrismaxValidationError
 
 
-DEFAULT_BASE_URL = (
-    "https://app-prismax-data-pipeline-beta-1053158761087.us-west1.run.app"
-)
+DEFAULT_BASE_URL = "https://data.prismaxserver.com"
 DEFAULT_SESSION_TIMEOUT = 300
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
