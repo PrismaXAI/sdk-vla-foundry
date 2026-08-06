@@ -57,6 +57,14 @@ def _source_path_from_asset(asset, label):
     return _require_string(asset.get("source_path"), f"{label}.source_path")
 
 
+def _path_belongs_to_episode(relative_path, episode_key):
+    relative_path = str(relative_path or "")
+    return (
+        relative_path == f"{episode_key}.mcap"
+        or relative_path.startswith(f"{episode_key}/")
+    )
+
+
 class DataUpload:
     """Validated description of one fixed PrismaX upload batch."""
 
@@ -68,7 +76,9 @@ class DataUpload:
                 f"Upload spec base_path must be an existing folder: {self._base_path}"
             )
         self._sessions = {}
+        self._session_refresh_locks = {}
         self._active_episode_keys = set()
+        self._episode_upload_states = {}
         self._state_lock = threading.Lock()
         self._parse()
 
@@ -132,20 +142,77 @@ class DataUpload:
         with self._state_lock:
             self._sessions.pop(int(upload_id), None)
 
-    def _claim_episode_uploads(self, episode_keys):
-        episode_keys = set(episode_keys)
+    def _discard_session_episode_urls(self, upload_id, episode_key):
+        upload_id = int(upload_id)
+        episode_key = str(episode_key)
         with self._state_lock:
-            conflicts = sorted(episode_keys & self._active_episode_keys)
+            session = self._sessions.get(upload_id)
+            if session is None:
+                return
+            session["signed_urls"] = [
+                item
+                for item in (session.get("signed_urls") or [])
+                if not _path_belongs_to_episode(
+                    item.get("relative_path"), episode_key
+                )
+            ]
+
+    def _session_refresh_lock(self, upload_id):
+        upload_id = int(upload_id)
+        with self._state_lock:
+            lock = self._session_refresh_locks.get(upload_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._session_refresh_locks[upload_id] = lock
+            return lock
+
+    def _begin_episode_upload(self, upload_id, episode_key):
+        token = (int(upload_id), str(episode_key))
+        with self._state_lock:
+            if token in self._active_episode_keys:
+                raise PrismaxValidationError(
+                    "This episode is already being uploaded by this process: "
+                    f"{episode_key}."
+                )
+            state = self._episode_upload_states.get(token)
+            if state is not None:
+                return state
+            self._active_episode_keys.add(token)
+            return "started"
+
+    def _finish_episode_upload(self, upload_id, episode_key, *, completed):
+        token = (int(upload_id), str(episode_key))
+        with self._state_lock:
+            self._active_episode_keys.discard(token)
+            self._episode_upload_states[token] = (
+                "completed" if completed else "incomplete"
+            )
+
+    def _mark_episode_uploads_completed(self, upload_id, episode_keys):
+        upload_id = int(upload_id)
+        with self._state_lock:
+            for episode_key in episode_keys:
+                self._episode_upload_states[(upload_id, str(episode_key))] = (
+                    "completed"
+                )
+
+    def _claim_episode_uploads(self, upload_id, episode_keys):
+        tokens = {(int(upload_id), str(key)) for key in episode_keys}
+        with self._state_lock:
+            conflicts = sorted(
+                key for _, key in tokens & self._active_episode_keys
+            )
             if conflicts:
                 raise PrismaxValidationError(
                     "These episodes are already being uploaded by this process: "
                     f"{', '.join(conflicts)}."
                 )
-            self._active_episode_keys.update(episode_keys)
+            self._active_episode_keys.update(tokens)
 
-    def _release_episode_uploads(self, episode_keys):
+    def _release_episode_uploads(self, upload_id, episode_keys):
+        tokens = {(int(upload_id), str(key)) for key in episode_keys}
         with self._state_lock:
-            self._active_episode_keys.difference_update(episode_keys)
+            self._active_episode_keys.difference_update(tokens)
 
     def _parse(self):
         _require_only_keys(

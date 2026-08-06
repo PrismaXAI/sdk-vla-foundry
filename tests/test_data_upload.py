@@ -3,14 +3,16 @@ import importlib
 import io
 import json
 import tempfile
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from prismax.data_upload import DataUpload
-from prismax.errors import PrismaxValidationError
+from prismax.errors import PrismaxApiError, PrismaxValidationError
 from prismax import cli
 from prismax.upload import (
     create_upload_session,
@@ -396,6 +398,66 @@ class DataUploadTests(unittest.TestCase):
             self.assertTrue(all(item["relative_path"].startswith("episode_1") for item in uploaded))
             client.upload_json_to_signed_url.assert_called_once()
 
+    def test_sequential_episode_uploads_reuse_cached_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_episode(root, "episode_1")
+            _write_episode(root, "episode_2")
+            data_upload = DataUpload.from_dict(
+                _templated_spec(["episode_1", "episode_2"]), base_path=root
+            )
+            session = {
+                "upload_id": 456,
+                "machine_id": "machine-1",
+                "task_id": 12,
+                "signed_urls": [
+                    {
+                        "relative_path": item.relative_path,
+                        "signed_url": f"https://storage.test/{item.relative_path}",
+                    }
+                    for item in data_upload.files
+                ] + [
+                    {
+                        "relative_path": f"{episode_key}/_MANIFEST.json",
+                        "signed_url": f"https://storage.test/{episode_key}/manifest",
+                    }
+                    for episode_key in data_upload.episode_keys
+                ],
+            }
+            data_upload._store_session(session)
+            client = Mock()
+
+            with patch.object(upload_module, "PrismaXClient", return_value=client):
+                upload_episode(
+                    456,
+                    "episode_1",
+                    data_upload,
+                    api_key="pxu_test",
+                    progress=False,
+                )
+                upload_episode(
+                    456,
+                    "episode_2",
+                    data_upload,
+                    api_key="pxu_test",
+                    progress=False,
+                )
+
+            client.resume_upload_session.assert_not_called()
+            self.assertEqual(client.upload_files.call_count, 2)
+            first_paths = {
+                item["relative_path"]
+                for item in client.upload_files.call_args_list[0].args[0]
+            }
+            second_paths = {
+                item["relative_path"]
+                for item in client.upload_files.call_args_list[1].args[0]
+            }
+            self.assertTrue(all(path.startswith("episode_1") for path in first_paths))
+            self.assertTrue(all(path.startswith("episode_2") for path in second_paths))
+            self.assertEqual(client.upload_json_to_signed_url.call_count, 2)
+            self.assertEqual(data_upload._get_session(456)["signed_urls"], [])
+
     def test_upload_episode_refreshes_expired_session_urls(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -425,7 +487,58 @@ class DataUploadTests(unittest.TestCase):
 
             client.resume_upload_session.assert_called_once()
 
-    def test_repeated_upload_episode_uses_resume_instead_of_cached_urls(self):
+    def test_concurrent_cache_misses_share_one_resume_request(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_episode(root, "episode_1")
+            _write_episode(root, "episode_2")
+            data_upload = DataUpload.from_dict(
+                _templated_spec(["episode_1", "episode_2"]), base_path=root
+            )
+            session = {
+                "upload_id": 456,
+                "machine_id": "machine-1",
+                "task_id": 12,
+                "signed_urls": [],
+            }
+            client = Mock()
+            client.resume_upload_session.return_value = session
+            original_get_session = data_upload._get_session
+            first_checks = 0
+            first_checks_lock = threading.Lock()
+            first_checks_barrier = threading.Barrier(2)
+
+            def coordinated_get_session(upload_id):
+                nonlocal first_checks
+                result = original_get_session(upload_id)
+                with first_checks_lock:
+                    first_checks += 1
+                    should_wait = first_checks <= 2
+                if should_wait:
+                    first_checks_barrier.wait(timeout=2)
+                return result
+
+            with patch.object(
+                data_upload,
+                "_get_session",
+                side_effect=coordinated_get_session,
+            ):
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    futures = [
+                        executor.submit(
+                            upload_module._get_or_resume_data_session,
+                            client,
+                            456,
+                            data_upload,
+                        )
+                        for _ in range(2)
+                    ]
+                    results = [future.result() for future in futures]
+
+            client.resume_upload_session.assert_called_once()
+            self.assertEqual([result["upload_id"] for result in results], [456, 456])
+
+    def test_repeated_completed_episode_is_skipped_without_resume(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_episode(root, "episode_1")
@@ -449,13 +562,6 @@ class DataUploadTests(unittest.TestCase):
             }
             data_upload._store_session(session)
             client = Mock()
-            client.resume_upload_session.return_value = {
-                "upload_id": 456,
-                "machine_id": "machine-1",
-                "task_id": 12,
-                "signed_urls": [],
-            }
-
             with patch.object(upload_module, "PrismaXClient", return_value=client):
                 upload_episode(
                     456,
@@ -464,7 +570,117 @@ class DataUploadTests(unittest.TestCase):
                     api_key="pxu_test",
                     progress=False,
                 )
-                upload_episode(
+                repeated_result = upload_episode(
+                    456,
+                    "episode_1",
+                    data_upload,
+                    api_key="pxu_test",
+                    progress=False,
+                )
+
+            client.resume_upload_session.assert_not_called()
+            client.upload_files.assert_called_once()
+            client.upload_json_to_signed_url.assert_called_once()
+            self.assertEqual(repeated_result, {
+                "upload_id": 456,
+                "episode_key": "episode_1",
+                "skipped": True,
+                "reason": "already_completed",
+            })
+
+    def test_failed_episode_requires_explicit_resume_before_retry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_episode(root, "episode_1")
+            data_upload = DataUpload.from_dict(
+                _templated_spec(["episode_1"]), base_path=root
+            )
+            data_upload._store_session({
+                "upload_id": 456,
+                "machine_id": "machine-1",
+                "task_id": 12,
+                "signed_urls": [
+                    {
+                        "relative_path": item.relative_path,
+                        "signed_url": f"https://storage.test/{item.relative_path}",
+                    }
+                    for item in data_upload.files
+                ] + [{
+                    "relative_path": "episode_1/_MANIFEST.json",
+                    "signed_url": "https://storage.test/manifest",
+                }],
+            })
+            client = Mock()
+            client.upload_files.side_effect = PrismaxApiError("network failed")
+
+            with patch.object(upload_module, "PrismaXClient", return_value=client):
+                with self.assertRaises(PrismaxApiError):
+                    upload_episode(
+                        456,
+                        "episode_1",
+                        data_upload,
+                        api_key="pxu_test",
+                        progress=False,
+                    )
+                with self.assertRaises(PrismaxValidationError) as ctx:
+                    upload_episode(
+                        456,
+                        "episode_1",
+                        data_upload,
+                        api_key="pxu_test",
+                        progress=False,
+                    )
+
+            self.assertIn("resume_upload", str(ctx.exception))
+            client.upload_files.assert_called_once()
+            self.assertIsNone(data_upload._get_session(456))
+
+    def test_explicit_resume_completes_previously_failed_episode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_episode(root, "episode_1")
+            data_upload = DataUpload.from_dict(
+                _templated_spec(["episode_1"]), base_path=root
+            )
+            session = {
+                "upload_id": 456,
+                "machine_id": "machine-1",
+                "task_id": 12,
+                "signed_urls": [
+                    {
+                        "relative_path": item.relative_path,
+                        "signed_url": f"https://storage.test/{item.relative_path}",
+                    }
+                    for item in data_upload.files
+                ] + [{
+                    "relative_path": "episode_1/_MANIFEST.json",
+                    "signed_url": "https://storage.test/manifest",
+                }],
+            }
+            data_upload._store_session(session)
+            client = Mock()
+            client.upload_files.side_effect = [
+                PrismaxApiError("network failed"),
+                None,
+            ]
+            client.resume_upload_session.return_value = session
+
+            with patch.object(upload_module, "PrismaXClient", return_value=client):
+                with self.assertRaises(PrismaxApiError):
+                    upload_episode(
+                        456,
+                        "episode_1",
+                        data_upload,
+                        api_key="pxu_test",
+                        progress=False,
+                    )
+                resume_upload(
+                    456,
+                    data_upload,
+                    api_key="pxu_test",
+                    progress=False,
+                )
+                repeated_result = upload_episode(
                     456,
                     "episode_1",
                     data_upload,
@@ -473,7 +689,13 @@ class DataUploadTests(unittest.TestCase):
                 )
 
             client.resume_upload_session.assert_called_once()
-            client.upload_json_to_signed_url.assert_called_once()
+            self.assertEqual(client.upload_files.call_count, 2)
+            self.assertEqual(repeated_result, {
+                "upload_id": 456,
+                "episode_key": "episode_1",
+                "skipped": True,
+                "reason": "already_completed",
+            })
 
     def test_same_episode_cannot_be_claimed_twice(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -482,12 +704,12 @@ class DataUploadTests(unittest.TestCase):
             data_upload = DataUpload.from_dict(
                 _templated_spec(["episode_1"]), base_path=root
             )
-            data_upload._claim_episode_uploads(["episode_1"])
+            data_upload._claim_episode_uploads(456, ["episode_1"])
             try:
                 with self.assertRaises(PrismaxValidationError) as ctx:
-                    data_upload._claim_episode_uploads(["episode_1"])
+                    data_upload._claim_episode_uploads(456, ["episode_1"])
             finally:
-                data_upload._release_episode_uploads(["episode_1"])
+                data_upload._release_episode_uploads(456, ["episode_1"])
 
             self.assertIn("already being uploaded", str(ctx.exception))
 

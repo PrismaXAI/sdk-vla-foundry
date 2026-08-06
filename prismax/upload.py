@@ -192,7 +192,22 @@ def upload_episode(
 ):
     data_upload = _require_data_upload(data_upload)
     files = data_upload.files_for_episode(episode_key)
-    data_upload._claim_episode_uploads([episode_key])
+    episode_state = data_upload._begin_episode_upload(upload_id, episode_key)
+    if episode_state == "completed":
+        return {
+            "upload_id": int(upload_id),
+            "episode_key": episode_key,
+            "skipped": True,
+            "reason": "already_completed",
+        }
+    if episode_state == "incomplete":
+        raise PrismaxValidationError(
+            f"Episode {episode_key!r} was already attempted but did not complete. "
+            f"Resume with prismax.resume_upload({upload_id}, data_upload)."
+        )
+
+    upload_started = False
+    completed = False
     try:
         client = _build_client(
             api_key=api_key,
@@ -203,6 +218,7 @@ def upload_episode(
             retries=retries,
         )
         session = _get_or_resume_data_session(client, upload_id, data_upload)
+        upload_started = True
         try:
             _upload_data_session_files(
                 client=client,
@@ -217,10 +233,23 @@ def upload_episode(
                 f"Resume with prismax.resume_upload({upload_id}, data_upload). "
                 f"Original error: {exc}"
             ) from exc
+        data_upload._discard_session_episode_urls(upload_id, episode_key)
+        data_upload._finish_episode_upload(
+            upload_id, episode_key, completed=True
+        )
+        completed = True
         return _public_session_result(session)
     finally:
-        data_upload._discard_session(upload_id)
-        data_upload._release_episode_uploads([episode_key])
+        if not completed:
+            if upload_started:
+                data_upload._discard_session(upload_id)
+                data_upload._finish_episode_upload(
+                    upload_id, episode_key, completed=False
+                )
+            else:
+                data_upload._release_episode_uploads(
+                    upload_id, [episode_key]
+                )
 
 
 def upload_session(
@@ -241,7 +270,7 @@ def upload_session(
 ):
     data_upload = _require_data_upload(data_upload)
     claimed_episode_keys = data_upload.episode_keys
-    data_upload._claim_episode_uploads(claimed_episode_keys)
+    data_upload._claim_episode_uploads(upload_id, claimed_episode_keys)
     try:
         client = _build_client(
             api_key=api_key,
@@ -266,6 +295,9 @@ def upload_session(
                 f"Resume with prismax.resume_upload({upload_id}, data_upload). "
                 f"Original error: {exc}"
             ) from exc
+        data_upload._mark_episode_uploads_completed(
+            upload_id, claimed_episode_keys
+        )
         if wait:
             return wait_for_upload(
                 upload_id,
@@ -280,7 +312,7 @@ def upload_session(
         return _public_session_result(session)
     finally:
         data_upload._discard_session(upload_id)
-        data_upload._release_episode_uploads(claimed_episode_keys)
+        data_upload._release_episode_uploads(upload_id, claimed_episode_keys)
 
 
 def resume_upload(
@@ -301,7 +333,7 @@ def resume_upload(
 ):
     data_upload = _require_data_upload(data_upload)
     claimed_episode_keys = data_upload.episode_keys
-    data_upload._claim_episode_uploads(claimed_episode_keys)
+    data_upload._claim_episode_uploads(upload_id, claimed_episode_keys)
     try:
         client = _build_client(
             api_key=api_key,
@@ -332,6 +364,9 @@ def resume_upload(
                 f"Retry prismax.resume_upload({upload_id}, data_upload). "
                 f"Original error: {exc}"
             ) from exc
+        data_upload._mark_episode_uploads_completed(
+            upload_id, claimed_episode_keys
+        )
         if wait:
             return wait_for_upload(
                 upload_id,
@@ -346,7 +381,7 @@ def resume_upload(
         return _public_session_result(session)
     finally:
         data_upload._discard_session(upload_id)
-        data_upload._release_episode_uploads(claimed_episode_keys)
+        data_upload._release_episode_uploads(upload_id, claimed_episode_keys)
 
 
 def upload(
@@ -544,14 +579,18 @@ def _get_or_resume_data_session(client, upload_id, data_upload):
     session = data_upload._get_session(upload_id)
     if session is not None and _session_urls_are_fresh(session):
         return session
-    session = client.resume_upload_session(
-        upload_id=upload_id,
-        files=_build_files_payload(data_upload.files, data_upload.episode_keys),
-    )
-    session = dict(session)
-    session.setdefault("upload_id", int(upload_id))
-    data_upload._store_session(session)
-    return session
+    with data_upload._session_refresh_lock(upload_id):
+        session = data_upload._get_session(upload_id)
+        if session is not None and _session_urls_are_fresh(session):
+            return session
+        session = client.resume_upload_session(
+            upload_id=upload_id,
+            files=_build_files_payload(data_upload.files, data_upload.episode_keys),
+        )
+        session = dict(session)
+        session.setdefault("upload_id", int(upload_id))
+        data_upload._store_session(session)
+        return session
 
 
 def _session_urls_are_fresh(session):

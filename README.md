@@ -314,6 +314,9 @@ prismax.upload_episode(upload_id, "episode_2", data)
 
 Episode uploads may run concurrently. The episode list is fixed when the
 `upload_id` is created; later calls cannot append undeclared episodes.
+Within the same process and `DataUpload` object, a completed episode is skipped
+if `upload_episode()` is called for it again. If an earlier attempt failed, use
+`resume_upload()` so the backend can identify and upload only missing files.
 
 You can pass the API key directly instead of using `PRISMAX_API_KEY`:
 
