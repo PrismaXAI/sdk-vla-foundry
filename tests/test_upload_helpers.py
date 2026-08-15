@@ -12,6 +12,7 @@ from prismax.client import PrismaXClient
 from prismax.manifest import build_manifest_payload, manifest_placeholder
 from prismax.errors import PrismaxApiError, PrismaxAuthError, PrismaxValidationError
 from prismax.scanner import (
+    MAX_FILES_PER_UPLOAD,
     LocalFile,
     episode_keys,
     scan_folder,
@@ -627,6 +628,74 @@ class UploadHelperTests(unittest.TestCase):
             "342 | UPLOADING | Wed, 08 Jul 2026 22:53:00 GMT | Put away messy clothes",
         )
 
+
+    def test_rejects_insecure_signed_url(self):
+        client = PrismaXClient(api_key="pxu_test", base_url="https://example.test")
+        with self.assertRaises(PrismaxValidationError):
+            client.upload_file_to_signed_url(
+                signed_url="http://storage.example.test/upload",
+                path="/does/not/matter.mp4",
+                content_type="video/mp4",
+            )
+
+    def test_non_retryable_upload_status_fails_once(self):
+        response = Mock(ok=False, status_code=400, text="invalid request")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "left.mp4"
+            path.write_bytes(b"video")
+            with patch("prismax.client.requests.put", return_value=response) as request_mock:
+                client = PrismaXClient(
+                    api_key="pxu_test",
+                    base_url="https://example.test",
+                    retries=3,
+                )
+                with self.assertRaises(PrismaxApiError):
+                    client.upload_file_to_signed_url(
+                        signed_url="https://storage.example.test/upload",
+                        path=path,
+                        content_type="video/mp4",
+                    )
+        self.assertEqual(request_mock.call_count, 1)
+
+    def test_rejects_excessive_concurrency(self):
+        with self.assertRaises(PrismaxValidationError):
+            PrismaXClient(
+                api_key="pxu_test",
+                base_url="https://example.test",
+                concurrency=65,
+            )
+
+    def test_validate_rejects_folder_uploads_above_entry_limit(self):
+        files = [
+            LocalFile("1.mcap", Path("1.mcap"), 4, "application/octet-stream"),
+            LocalFile("1/high.mp4", Path("high.mp4"), 4, "video/mp4"),
+            LocalFile("1/left.mp4", Path("left.mp4"), 4, "video/mp4"),
+            LocalFile("1/right.mp4", Path("right.mp4"), 4, "video/mp4"),
+        ]
+        files.extend(
+            LocalFile(f"1/extra_{index}.mp4", Path("extra.mp4"), 4, "video/mp4")
+            for index in range(MAX_FILES_PER_UPLOAD - len(files) + 1)
+        )
+        errors = validate_mcap_mp4(files)
+        self.assertTrue(any("maximum is 2000" in error for error in errors))
+
+    def test_base_url_rejects_embedded_credentials(self):
+        with self.assertRaises(PrismaxValidationError):
+            PrismaXClient(
+                api_key="pxu_test",
+                base_url="https://user:password@example.test",
+            )
+
+    def test_client_rejects_non_object_json_response(self):
+        response = Mock(ok=True)
+        response.json.return_value = ["unexpected"]
+        with patch("prismax.client.requests.request", return_value=response):
+            client = PrismaXClient(
+                api_key="pxu_test",
+                base_url="https://example.test",
+            )
+            with self.assertRaises(PrismaxApiError):
+                client.get_upload(123)
 
 if __name__ == "__main__":
     unittest.main()

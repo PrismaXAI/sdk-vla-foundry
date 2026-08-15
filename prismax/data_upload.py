@@ -4,11 +4,15 @@ import threading
 from pathlib import Path, PurePosixPath
 
 from .errors import PrismaxValidationError
-from .scanner import LocalFile, _content_type, _is_hidden_path
+from .scanner import (
+    MAX_FILES_PER_UPLOAD,
+    LocalFile,
+    _content_type,
+    _is_hidden_path,
+)
 
 
 FORMAT_VERSION = 1
-MAX_FILES_PER_UPLOAD = 2000
 PRIMARY_DESTINATIONS = {
     "env": "high.mp4",
     "left": "left.mp4",
