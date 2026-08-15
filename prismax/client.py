@@ -15,13 +15,17 @@ DEFAULT_BASE_URL = (
 )
 DEFAULT_SESSION_TIMEOUT = 300
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+# Security Fix: Maximum concurrency (worker) count reduced to 10 to limit resource consumption.
+MAX_CONCURRENCY = 10
+MAX_RETRIES = 10
+SDK_VERSION = "0.2.0"
 
 
 def _sdk_version():
     try:
         return version("prismax")
     except PackageNotFoundError:
-        return "0.1.0"
+        return SDK_VERSION
 
 
 def _validate_base_url(base_url):
@@ -31,11 +35,27 @@ def _validate_base_url(base_url):
             f"base_url must start with https:// (got: {base_url!r})."
         )
     host = parsed.hostname or ""
+    if not host:
+        raise PrismaxValidationError("base_url must include a hostname.")
+    if parsed.username or parsed.password:
+        raise PrismaxValidationError("base_url must not include credentials.")
     if parsed.scheme != "https" and host not in LOCAL_HOSTS:
         raise PrismaxValidationError(
             "base_url must use https:// for non-local hosts "
             f"(got: {base_url!r}). Plain http is only allowed for localhost."
         )
+
+
+def _validate_signed_url(signed_url):
+    parsed = urlparse(str(signed_url or ""))
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise PrismaxValidationError(
+            "signed_url must be an absolute HTTPS URL with a hostname."
+        )
+
+
+def _is_retryable_status(status_code):
+    return status_code == 429 or 500 <= status_code < 600
 
 
 class PrismaXClient:
@@ -56,10 +76,27 @@ class PrismaXClient:
             base_url or os.getenv("PRISMAX_BASE_URL") or DEFAULT_BASE_URL
         ).rstrip("/")
         _validate_base_url(self.base_url)
-        self.timeout = timeout
-        self.session_timeout = session_timeout
-        self.concurrency = max(1, int(concurrency))
-        self.retries = max(1, int(retries))
+        try:
+            self.timeout = float(timeout)
+            self.session_timeout = float(session_timeout)
+            self.concurrency = int(concurrency)
+            self.retries = int(retries)
+        except (TypeError, ValueError):
+            raise PrismaxValidationError(
+                "timeout, session_timeout, concurrency, and retries must be numeric."
+            ) from None
+        if self.timeout <= 0 or self.session_timeout <= 0:
+            raise PrismaxValidationError(
+                "timeout and session_timeout must be greater than zero."
+            )
+        if not 1 <= self.concurrency <= MAX_CONCURRENCY:
+            raise PrismaxValidationError(
+                f"concurrency must be between 1 and {MAX_CONCURRENCY}."
+            )
+        if not 1 <= self.retries <= MAX_RETRIES:
+            raise PrismaxValidationError(
+                f"retries must be between 1 and {MAX_RETRIES}."
+            )
 
     def _headers(self):
         headers = {
@@ -88,6 +125,8 @@ class PrismaXClient:
         except ValueError:
             payload = {"success": False, "msg": response.text}
 
+        if not isinstance(payload, dict):
+            raise PrismaxApiError("PrismaX API returned an invalid JSON object.")
         if not response.ok or payload.get("success") is False:
             message = payload.get("msg") or payload.get("error") or f"PrismaX API request failed: {response.status_code}"
             if response.status_code in (401, 403):
@@ -129,6 +168,7 @@ class PrismaXClient:
         )
 
     def upload_file_to_signed_url(self, *, signed_url, path, content_type, relative_path=None):
+        _validate_signed_url(signed_url)
         display_path = relative_path or path
         for attempt in range(1, self.retries + 1):
             try:
@@ -142,6 +182,8 @@ class PrismaXClient:
                 if response.ok:
                     return
                 message = f"Upload failed with status {response.status_code}: {response.text[:200]}"
+                if not _is_retryable_status(response.status_code):
+                    raise PrismaxApiError(f"Failed to upload {display_path}: {message}")
             except (OSError, requests.RequestException) as exc:
                 message = str(exc)
 
@@ -150,6 +192,7 @@ class PrismaXClient:
             time.sleep(min(2 ** attempt, 10))
 
     def upload_json_to_signed_url(self, *, signed_url, payload):
+        _validate_signed_url(signed_url)
         body = json.dumps(payload, indent=2).encode("utf-8")
         for attempt in range(1, self.retries + 1):
             try:
@@ -162,6 +205,8 @@ class PrismaXClient:
                 if response.ok:
                     return
                 message = f"Manifest upload failed with status {response.status_code}: {response.text[:200]}"
+                if not _is_retryable_status(response.status_code):
+                    raise PrismaxApiError(message)
             except requests.RequestException as exc:
                 message = str(exc)
 

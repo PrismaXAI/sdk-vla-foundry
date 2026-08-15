@@ -7,6 +7,7 @@ from .errors import PrismaxValidationError
 
 MANIFEST_FILENAME = "_MANIFEST.json"
 MIN_VIDEO_COUNT = 3
+MAX_FILES_PER_UPLOAD = 2000
 VIDEO_SLOTS = ("env", "left", "right")
 
 
@@ -165,6 +166,13 @@ def validate_mcap_mp4(files: list[LocalFile]) -> list[str]:
         errors.append(f"Only .mcap files are allowed at root: {relative_path}")
 
     episode_keys = sorted(stats.keys())
+    total_entries = len(files) + len(episode_keys)
+    if total_entries > MAX_FILES_PER_UPLOAD:
+        errors.append(
+            f"Upload contains {total_entries} files including generated manifests; "
+            f"the maximum is {MAX_FILES_PER_UPLOAD}."
+        )
+
     if not episode_keys:
         errors.append(
             "No valid episodes found. Expected {episode}.mcap at root and at least "
