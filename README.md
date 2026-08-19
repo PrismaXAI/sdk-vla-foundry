@@ -1,6 +1,6 @@
 # PrismaX Python SDK
 
-Minimal upload SDK for PrismaX robotic data.
+Python SDK for PrismaX robotic data uploads and downloads.
 
 - GitHub repository: <https://github.com/PrismaXAI/sdk-vla-foundry>
 - Issues and feature requests: <https://github.com/PrismaXAI/sdk-vla-foundry/issues>
@@ -19,6 +19,7 @@ Follow these steps in order:
 2. [Choose an upload structure](#2-choose-an-upload-structure)
 3. [Upload with Python](#3-upload-with-python)
 4. [Check status and resume](#4-check-status-and-resume)
+5. [Download an API package](#5-download-an-api-package)
 
 Additional reference:
 
@@ -70,7 +71,7 @@ Install and configure the SDK:
 
 ```bash
 pip install prismax
-export PRISMAX_API_KEY="pxu_your_upload_api_key"
+export PRISMAX_UPLOAD_API_KEY="pxu_your_upload_api_key"
 ```
 
 You can list available scenario names from Python. This does not require an API
@@ -318,7 +319,8 @@ Within the same process and `DataUpload` object, a completed episode is skipped
 if `upload_episode()` is called for it again. If an earlier attempt failed, use
 `resume_upload()` so the backend can identify and upload only missing files.
 
-You can pass the API key directly instead of using `PRISMAX_API_KEY`:
+You can pass the API key directly instead of using
+`PRISMAX_UPLOAD_API_KEY`:
 
 ```python
 upload_id = prismax.create_upload_session(
@@ -377,6 +379,37 @@ Wait for the worker to reach a terminal status:
 result = prismax.wait_for_upload(123, max_wait=1800)
 ```
 
+## 5. Download An API Package
+
+Create a Download API key with the `pxa_` prefix and copy the package ID from
+the PrismaX app. Upload keys with the `pxu_` prefix cannot download data.
+
+```bash
+export PRISMAX_DOWNLOAD_API_KEY="pxa_your_download_api_key"
+```
+
+Download the package with Python:
+
+```python
+import prismax
+
+result = prismax.download(
+    "pkg_your_package_id",
+    output="./dataset",
+)
+print(result["file_count"])
+```
+
+Or use the CLI:
+
+```bash
+prismax download pkg_your_package_id --output ./dataset
+```
+
+The SDK downloads the MCAP, primary videos, and any additional videos returned
+by the package. It automatically sends the CDN cookie associated with each
+file.
+
 ## Additional Reference
 
 The following sections are optional references after completing the main upload
@@ -418,6 +451,12 @@ prismax uploads
 prismax uploads --limit 20
 prismax status 123
 prismax status 123 --json
+```
+
+Download an existing API package:
+
+```bash
+prismax download pkg_your_package_id --output ./dataset
 ```
 
 Use `--wait` to wait for worker processing. The default maximum wait is 30

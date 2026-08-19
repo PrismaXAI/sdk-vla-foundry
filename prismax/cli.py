@@ -5,6 +5,7 @@ import sys
 from .errors import PrismaxError
 from .client import DEFAULT_SESSION_TIMEOUT
 from .data_upload import DataUpload
+from .download import download
 from .scenarios import list_scenarios
 from .upload import (
     create_upload_session,
@@ -48,6 +49,19 @@ def _print_uploads(uploads):
             str(upload_item.get("scenario") or ""),
         ]
         print(" | ".join(values))
+
+
+def _print_download_summary(payload):
+    fields = [
+        ("Download ID", payload.get("download_id")),
+        ("Package ID", payload.get("package_id")),
+        ("Episodes", payload.get("episode_count")),
+        ("Files", payload.get("file_count")),
+        ("Output", payload.get("output")),
+    ]
+    for label, value in fields:
+        if value is not None:
+            print(f"{label}: {value}")
 
 
 def main(argv=None):
@@ -149,6 +163,22 @@ def main(argv=None):
     scenarios_parser.add_argument("--base-url")
     scenarios_parser.add_argument("--timeout", type=int, default=60)
     scenarios_parser.add_argument("--json", action="store_true", help="Print the full raw API response.")
+
+    download_parser = subparsers.add_parser(
+        "download",
+        help="Download an existing PrismaX API package.",
+    )
+    download_parser.add_argument("package_id")
+    download_parser.add_argument("--output", default="./dataset")
+    download_parser.add_argument("--api-key")
+    download_parser.add_argument("--base-url")
+    download_parser.add_argument("--timeout", type=int, default=60)
+    download_parser.add_argument(
+        "--session-timeout", type=int, default=DEFAULT_SESSION_TIMEOUT
+    )
+    download_parser.add_argument("--retries", type=int, default=3)
+    download_parser.add_argument("--concurrency", type=int, default=5)
+    download_parser.add_argument("--no-progress", action="store_true")
 
     args = parser.parse_args(argv)
 
@@ -291,6 +321,21 @@ def main(argv=None):
                 _print_json(result)
             else:
                 _print_lines(result)
+            return 0
+
+        if args.command == "download":
+            result = download(
+                args.package_id,
+                args.output,
+                api_key=args.api_key,
+                base_url=args.base_url,
+                progress=not args.no_progress,
+                timeout=args.timeout,
+                session_timeout=args.session_timeout,
+                concurrency=args.concurrency,
+                retries=args.retries,
+            )
+            _print_download_summary(result)
             return 0
     except PrismaxError as exc:
         print(f"prismax: {exc}", file=sys.stderr)

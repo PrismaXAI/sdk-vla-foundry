@@ -2,7 +2,11 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-from .client import DEFAULT_SESSION_TIMEOUT, PrismaXClient
+from .client import (
+    DEFAULT_SESSION_TIMEOUT,
+    UPLOAD_API_KEY_ENV,
+    PrismaXClient,
+)
 from .data_upload import DataUpload
 from .errors import PrismaxApiError, PrismaxValidationError
 from .manifest import build_manifest_payload, manifest_placeholder
@@ -66,7 +70,13 @@ def _require_data_upload(value):
 
 
 def _build_client(
-    *, api_key, base_url, timeout, session_timeout, concurrency, retries
+    *,
+    api_key,
+    base_url,
+    timeout,
+    session_timeout=DEFAULT_SESSION_TIMEOUT,
+    concurrency=5,
+    retries=3,
 ):
     return PrismaXClient(
         api_key=api_key,
@@ -75,6 +85,8 @@ def _build_client(
         session_timeout=session_timeout,
         concurrency=concurrency,
         retries=retries,
+        api_key_env=UPLOAD_API_KEY_ENV,
+        api_key_prefix="pxu_",
     )
 
 
@@ -404,7 +416,7 @@ def upload(
 ):
     if not serial_number:
         raise PrismaxValidationError("serial_number is required.")
-    client = PrismaXClient(
+    client = _build_client(
         api_key=api_key,
         base_url=base_url,
         timeout=timeout,
@@ -470,7 +482,7 @@ def resume(
     concurrency=5,
     retries=3,
 ):
-    client = PrismaXClient(
+    client = _build_client(
         api_key=api_key,
         base_url=base_url,
         timeout=timeout,
@@ -518,7 +530,12 @@ def resume(
 
 
 def status(upload_id, *, api_key=None, base_url=None, timeout=60, retries=3):
-    client = PrismaXClient(api_key=api_key, base_url=base_url, timeout=timeout, retries=retries)
+    client = _build_client(
+        api_key=api_key,
+        base_url=base_url,
+        timeout=timeout,
+        retries=retries,
+    )
     return client.get_upload(upload_id)
 
 
@@ -530,7 +547,7 @@ def recent_uploads(*, limit=10, api_key=None, base_url=None, timeout=60, retries
     if limit < 1 or limit > 100:
         raise PrismaxValidationError("limit must be between 1 and 100.")
 
-    client = PrismaXClient(
+    client = _build_client(
         api_key=api_key,
         base_url=base_url,
         timeout=timeout,
@@ -550,7 +567,12 @@ def wait_for_upload(
     retries=3,
     max_poll_errors=DEFAULT_POLL_ERROR_LIMIT,
 ):
-    client = PrismaXClient(api_key=api_key, base_url=base_url, timeout=timeout, retries=retries)
+    client = _build_client(
+        api_key=api_key,
+        base_url=base_url,
+        timeout=timeout,
+        retries=retries,
+    )
     started_at = time.monotonic()
     last_status = None
     poll_errors = 0

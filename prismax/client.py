@@ -15,6 +15,8 @@ DEFAULT_BASE_URL = (
 )
 DEFAULT_SESSION_TIMEOUT = 300
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+UPLOAD_API_KEY_ENV = "PRISMAX_UPLOAD_API_KEY"
+DOWNLOAD_API_KEY_ENV = "PRISMAX_DOWNLOAD_API_KEY"
 
 
 def _sdk_version():
@@ -48,10 +50,17 @@ class PrismaXClient:
         concurrency=5,
         retries=3,
         require_api_key=True,
+        api_key_env=None,
+        api_key_prefix=None,
     ):
-        self.api_key = api_key or os.getenv("PRISMAX_API_KEY")
+        self.api_key = api_key or (os.getenv(api_key_env) if api_key_env else None)
         if require_api_key and not self.api_key:
-            raise PrismaxAuthError("api_key is required or PRISMAX_API_KEY must be set.")
+            env_hint = f" or {api_key_env} must be set" if api_key_env else ""
+            raise PrismaxAuthError(f"api_key is required{env_hint}.")
+        if self.api_key and api_key_prefix and not self.api_key.startswith(api_key_prefix):
+            raise PrismaxAuthError(
+                f"This operation requires a {api_key_prefix} API key."
+            )
         self.base_url = (
             base_url or os.getenv("PRISMAX_BASE_URL") or DEFAULT_BASE_URL
         ).rstrip("/")
@@ -128,6 +137,14 @@ class PrismaXClient:
             params={"limit": limit},
         )
 
+    def create_download_session(self, *, package_id):
+        return self._request(
+            "POST",
+            "/v1/data/download-sessions",
+            request_timeout=self.session_timeout,
+            json={"package_id": package_id},
+        )
+
     def upload_file_to_signed_url(self, *, signed_url, path, content_type, relative_path=None):
         display_path = relative_path or path
         for attempt in range(1, self.retries + 1):
@@ -182,6 +199,48 @@ class PrismaXClient:
                     relative_path=item.get("relative_path"),
                 ): item
                 for item in upload_items
+            }
+            for future in as_completed(futures):
+                future.result()
+                if on_file_complete:
+                    on_file_complete(futures[future])
+
+    def download_file_from_cdn(self, *, url, cookie_header, destination, relative_path=None):
+        display_path = relative_path or str(destination)
+        for attempt in range(1, self.retries + 1):
+            try:
+                with requests.get(
+                    url,
+                    headers={"Cookie": cookie_header},
+                    stream=True,
+                    timeout=self.timeout,
+                ) as response:
+                    response.raise_for_status()
+                    with open(destination, "wb") as handle:
+                        for chunk in response.iter_content(chunk_size=1024 * 1024):
+                            if chunk:
+                                handle.write(chunk)
+                return
+            except (OSError, requests.RequestException) as exc:
+                message = str(exc)
+
+            if attempt == self.retries:
+                raise PrismaxApiError(f"Failed to download {display_path}: {message}")
+            time.sleep(min(2 ** attempt, 10))
+
+    def download_files(self, download_items, on_file_complete=None):
+        if not download_items:
+            return
+        with ThreadPoolExecutor(max_workers=self.concurrency) as executor:
+            futures = {
+                executor.submit(
+                    self.download_file_from_cdn,
+                    url=item["url"],
+                    cookie_header=item["cookie_header"],
+                    destination=item["destination"],
+                    relative_path=item.get("relative_path"),
+                ): item
+                for item in download_items
             }
             for future in as_completed(futures):
                 future.result()

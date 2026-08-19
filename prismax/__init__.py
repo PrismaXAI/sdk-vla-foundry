@@ -1,5 +1,6 @@
 from .client import PrismaXClient
 from .data_upload import DataUpload
+from .download import create_download_session, download
 from .errors import (
     PrismaxApiError,
     PrismaxAuthError,
@@ -20,7 +21,7 @@ from .upload import (
     wait_for_upload,
 )
 
-__version__ = "0.2.1"
+__version__ = "0.3.0b1"
 
 __all__ = [
     "PrismaXClient",
@@ -31,7 +32,9 @@ __all__ = [
     "PrismaxValidationError",
     "__version__",
     "episode_keys",
+    "create_download_session",
     "create_upload_session",
+    "download",
     "list_scenarios",
     "recent_uploads",
     "resume",
