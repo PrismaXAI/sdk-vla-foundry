@@ -79,6 +79,44 @@ class DataUploadTests(unittest.TestCase):
                 ],
             )
 
+    def test_spec_without_job_id_defaults_to_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_episode(root, "episode_1")
+            spec_path = root / "prismax_upload.json"
+            spec_path.write_text(json.dumps(_templated_spec(["episode_1"])))
+
+            data_upload = DataUpload.from_json(spec_path)
+
+            self.assertIsNone(data_upload.job_id)
+
+    def test_spec_with_job_id_is_exposed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_episode(root, "episode_1")
+            spec = _templated_spec(["episode_1"])
+            spec["job_id"] = 42
+            spec_path = root / "prismax_upload.json"
+            spec_path.write_text(json.dumps(spec))
+
+            data_upload = DataUpload.from_json(spec_path)
+
+            self.assertEqual(data_upload.job_id, 42)
+
+    def test_spec_rejects_non_integer_job_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_episode(root, "episode_1")
+            spec = _templated_spec(["episode_1"])
+            spec["job_id"] = "not-a-number"
+            spec_path = root / "prismax_upload.json"
+            spec_path.write_text(json.dumps(spec))
+
+            with self.assertRaises(PrismaxValidationError) as ctx:
+                DataUpload.from_json(spec_path)
+
+            self.assertIn("job_id", str(ctx.exception))
+
     def test_explicit_spec_supports_arbitrary_source_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -356,6 +394,57 @@ class DataUploadTests(unittest.TestCase):
             client.list_tasks.assert_not_called()
             self.assertEqual(
                 client.create_upload_session.call_args.kwargs["task_id"], 99
+            )
+
+    def test_create_upload_session_uses_job_id_from_spec(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_episode(root, "episode_1")
+            spec = _templated_spec(["episode_1"])
+            spec["job_id"] = 42
+            data_upload = DataUpload.from_dict(spec, base_path=root)
+            client = Mock()
+            client.create_upload_session.return_value = {
+                "upload_id": 456,
+                "task_id": 99,
+                "signed_urls": [],
+            }
+
+            with patch.object(upload_module, "PrismaXClient", return_value=client):
+                create_upload_session(
+                    data_upload,
+                    task_id=99,
+                    api_key="pxu_test",
+                )
+
+            self.assertEqual(
+                client.create_upload_session.call_args.kwargs["job_id"], 42
+            )
+
+    def test_create_upload_session_explicit_job_id_overrides_spec(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_episode(root, "episode_1")
+            spec = _templated_spec(["episode_1"])
+            spec["job_id"] = 42
+            data_upload = DataUpload.from_dict(spec, base_path=root)
+            client = Mock()
+            client.create_upload_session.return_value = {
+                "upload_id": 456,
+                "task_id": 99,
+                "signed_urls": [],
+            }
+
+            with patch.object(upload_module, "PrismaXClient", return_value=client):
+                create_upload_session(
+                    data_upload,
+                    task_id=99,
+                    job_id=7,
+                    api_key="pxu_test",
+                )
+
+            self.assertEqual(
+                client.create_upload_session.call_args.kwargs["job_id"], 7
             )
 
     def test_upload_episode_only_transfers_requested_episode(self):

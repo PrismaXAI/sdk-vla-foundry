@@ -57,6 +57,14 @@ def _source_path_from_asset(asset, label):
     return _require_string(asset.get("source_path"), f"{label}.source_path")
 
 
+def _validate_job_id(value):
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise PrismaxValidationError("job_id must be an integer.")
+    return value
+
+
 def _path_belongs_to_episode(relative_path, episode_key):
     relative_path = str(relative_path or "")
     return (
@@ -106,6 +114,10 @@ class DataUpload:
     @property
     def serial_number(self):
         return self._serial_number
+
+    @property
+    def job_id(self):
+        return self._job_id
 
     @property
     def episode_keys(self):
@@ -217,7 +229,7 @@ class DataUpload:
     def _parse(self):
         _require_only_keys(
             self._spec,
-            {"format_version", "scenario", "robot", "episode_set"},
+            {"format_version", "scenario", "robot", "episode_set", "job_id"},
             "upload spec",
         )
         format_version = self._spec.get("format_version", FORMAT_VERSION)
@@ -226,6 +238,7 @@ class DataUpload:
                 f"format_version must be {FORMAT_VERSION}."
             )
         self._scenario = _require_string(self._spec.get("scenario"), "scenario")
+        self._job_id = _validate_job_id(self._spec.get("job_id"))
 
         robot = _require_mapping(self._spec.get("robot"), "robot")
         _require_only_keys(robot, {"serial_number"}, "robot")

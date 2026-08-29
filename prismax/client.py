@@ -104,16 +104,19 @@ class PrismaXClient:
             raise PrismaxApiError(message)
         return payload.get("data", payload)
 
-    def create_upload_session(self, *, task_id, serial_number, files):
+    def create_upload_session(self, *, task_id, serial_number, files, job_id=None):
+        body = {
+            "task_id": task_id,
+            "serial_number": serial_number,
+            "files": files,
+        }
+        if job_id is not None:
+            body["job_id"] = job_id
         return self._request(
             "POST",
             "/v1/data/upload-sessions",
             request_timeout=self.session_timeout,
-            json={
-                "task_id": task_id,
-                "serial_number": serial_number,
-                "files": files,
-            },
+            json=body,
         )
 
     def resume_upload_session(self, *, upload_id, files):
@@ -126,6 +129,9 @@ class PrismaXClient:
 
     def list_tasks(self):
         return self._request("GET", "/data/tasks")
+
+    def list_jobs(self):
+        return self._request("GET", "/v1/data/jobs")
 
     def get_upload(self, upload_id):
         return self._request("GET", f"/v1/data/uploads/{upload_id}")

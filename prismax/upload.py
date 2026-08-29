@@ -154,6 +154,7 @@ def create_upload_session(
     data_upload,
     *,
     task_id=None,
+    job_id=None,
     api_key=None,
     base_url=None,
     timeout=60,
@@ -175,10 +176,12 @@ def create_upload_session(
         task_id=task_id,
         scenario=data_upload.scenario,
     )
+    resolved_job_id = job_id if job_id is not None else data_upload.job_id
     session = client.create_upload_session(
         task_id=task_id,
         serial_number=data_upload.serial_number,
         files=_build_files_payload(data_upload.files, data_upload.episode_keys),
+        job_id=resolved_job_id,
     )
     session = dict(session)
     session.setdefault("task_id", task_id)
@@ -403,6 +406,7 @@ def upload(
     scenario=None,
     task_name=None,
     serial_number,
+    job_id=None,
     api_key=None,
     base_url=None,
     wait=False,
@@ -435,6 +439,7 @@ def upload(
         task_id=task_id,
         serial_number=serial_number,
         files=_build_files_payload(files, keys),
+        job_id=job_id,
     )
     resolved_machine_id = session.get("machine_id")
     try:
