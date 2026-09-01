@@ -7,6 +7,7 @@ from .errors import (
     PrismaxError,
     PrismaxValidationError,
 )
+from .jobs import list_jobs
 from .scanner import episode_keys, scan_folder, select_primary_video_paths, validate_mcap_mp4
 from .scenarios import list_scenarios
 from .upload import (
@@ -35,6 +36,7 @@ __all__ = [
     "create_download_session",
     "create_upload_session",
     "download",
+    "list_jobs",
     "list_scenarios",
     "recent_uploads",
     "resume",

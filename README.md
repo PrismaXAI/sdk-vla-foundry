@@ -51,6 +51,7 @@ You need:
 - a PrismaX task scenario/name
 - the serial number of the registered robot that produced the data
 - one MCAP file and at least three MP4 videos for each episode
+- optionally, a job ID if the upload is for a job assigned to you
 
 Create and find these in the PrismaX app:
 
@@ -63,6 +64,9 @@ Create and find these in the PrismaX app:
   `prismax.list_scenarios()`.
 - **Robot serial number:** open <https://app.prismax.ai/account> and use the
   serial number of the registered Operator machine that produced the data.
+- **Job ID:** if you were assigned a job, retrieve its ID and assigned tasks
+  with `prismax.list_jobs()`. This requires your upload API key. A job's
+  tasks are the only task scenarios that upload is allowed to use.
 
 Download API keys are not valid for uploads. The backend verifies that the
 serial number belongs to the upload API key owner.
@@ -133,6 +137,7 @@ local `prismax_upload.json` next to the data:
 ```json
 {
   "scenario": "Put away messy clothes",
+  "job_id": 42,
   "robot": {
     "serial_number": "MD100101000019205Z00082"
   },
@@ -168,7 +173,9 @@ local `prismax_upload.json` next to the data:
 
 The `{episode_key}` placeholder is replaced with each value in `episode_keys`.
 The additional video glob may match all episode MP4s; the SDK automatically
-excludes the three declared primary source files.
+excludes the three declared primary source files. `job_id` is optional; include
+it only if this upload belongs to a job assigned to you (see
+[Prepare your account and data](#1-prepare-your-account-and-data)).
 
 ### Option C: Explicit JSON
 
@@ -269,6 +276,7 @@ result = prismax.upload(
     "DATA_FOLDER_PATH",
     scenario="SCENARIO_NAME",
     serial_number="ROBOT_SERIAL_NUMBER",
+    job_id=42,  # optional; omit if this upload isn't for an assigned job
 )
 
 print(result["upload_id"])
@@ -327,6 +335,16 @@ upload_id = prismax.create_upload_session(
     data,
     api_key="pxu_your_upload_api_key",
 )
+```
+
+For either JSON or folder uploads, `job_id` can also be passed as a keyword
+argument to `create_upload_session()` or `upload()` instead of (or to
+override) a `job_id` already set in the JSON spec. List jobs assigned to you
+with `prismax.list_jobs()`:
+
+```python
+for job in prismax.list_jobs():
+    print(job["job_id"], job["due_date"], job["tasks"])
 ```
 
 ## 4. Check Status And Resume
@@ -423,12 +441,28 @@ List available scenarios:
 prismax scenarios
 ```
 
+List jobs assigned to you:
+
+```bash
+prismax jobs
+```
+
 Upload the expected folder structure:
 
 ```bash
 prismax upload ./data \
   --scenario "Pick and place packaged food items" \
   --serial-number robot_serial_number
+```
+
+Include `--job-id` on `upload` or `upload-data` if the upload belongs to an
+assigned job:
+
+```bash
+prismax upload ./data \
+  --scenario "Pick and place packaged food items" \
+  --serial-number robot_serial_number \
+  --job-id 42
 ```
 
 Create and upload a JSON-defined upload:

@@ -6,6 +6,7 @@ from .errors import PrismaxError
 from .client import DEFAULT_SESSION_TIMEOUT
 from .data_upload import DataUpload
 from .download import download
+from .jobs import list_jobs
 from .scenarios import list_scenarios
 from .upload import (
     create_upload_session,
@@ -51,6 +52,18 @@ def _print_uploads(uploads):
         print(" | ".join(values))
 
 
+def _print_jobs(jobs):
+    for job in jobs:
+        task_names = ", ".join(task.get("task_name", "") for task in (job.get("tasks") or []))
+        values = [
+            str(job.get("job_id") or ""),
+            str(job.get("due_date") or ""),
+            str(job.get("rate_usd_per_hour") or ""),
+            task_names,
+        ]
+        print(" | ".join(values))
+
+
 def _print_download_summary(payload):
     fields = [
         ("Download ID", payload.get("download_id")),
@@ -74,6 +87,7 @@ def main(argv=None):
     upload_parser.add_argument("--scenario")
     upload_parser.add_argument("--task-name", dest="scenario")
     upload_parser.add_argument("--serial-number", required=True)
+    upload_parser.add_argument("--job-id", type=int)
     upload_parser.add_argument("--api-key")
     upload_parser.add_argument("--base-url")
     upload_parser.add_argument("--wait", action="store_true")
@@ -106,6 +120,7 @@ def main(argv=None):
         help="Create and upload a session described by a PrismaX upload JSON file.",
     )
     upload_data_parser.add_argument("spec", help="Path to the PrismaX upload JSON file.")
+    upload_data_parser.add_argument("--job-id", type=int, help="Overrides any job_id already set in the JSON spec.")
     upload_data_parser.add_argument("--api-key")
     upload_data_parser.add_argument("--base-url")
     upload_data_parser.add_argument("--wait", action="store_true")
@@ -164,6 +179,12 @@ def main(argv=None):
     scenarios_parser.add_argument("--timeout", type=int, default=60)
     scenarios_parser.add_argument("--json", action="store_true", help="Print the full raw API response.")
 
+    jobs_parser = subparsers.add_parser("jobs", help="List jobs assigned to this API key's owner.")
+    jobs_parser.add_argument("--api-key")
+    jobs_parser.add_argument("--base-url")
+    jobs_parser.add_argument("--timeout", type=int, default=60)
+    jobs_parser.add_argument("--json", action="store_true", help="Print the full raw API response.")
+
     download_parser = subparsers.add_parser(
         "download",
         help="Download an existing PrismaX API package.",
@@ -189,6 +210,7 @@ def main(argv=None):
                 task_id=args.task_id,
                 scenario=args.scenario,
                 serial_number=args.serial_number,
+                job_id=args.job_id,
                 api_key=args.api_key,
                 base_url=args.base_url,
                 wait=args.wait,
@@ -231,6 +253,7 @@ def main(argv=None):
             data_upload = DataUpload.from_json(args.spec)
             upload_id = create_upload_session(
                 data_upload,
+                job_id=args.job_id,
                 api_key=args.api_key,
                 base_url=args.base_url,
                 timeout=args.timeout,
@@ -321,6 +344,18 @@ def main(argv=None):
                 _print_json(result)
             else:
                 _print_lines(result)
+            return 0
+
+        if args.command == "jobs":
+            result = list_jobs(
+                api_key=args.api_key,
+                base_url=args.base_url,
+                timeout=args.timeout,
+            )
+            if args.json:
+                _print_json(result)
+            else:
+                _print_jobs(result)
             return 0
 
         if args.command == "download":

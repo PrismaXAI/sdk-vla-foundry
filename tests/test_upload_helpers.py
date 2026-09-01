@@ -18,6 +18,7 @@ from prismax.scanner import (
     select_primary_video_paths,
     validate_mcap_mp4,
 )
+from prismax.jobs import list_jobs
 from prismax.scenarios import list_scenarios
 from prismax.upload import recent_uploads, resolve_task_id, upload, wait_for_upload
 
@@ -282,6 +283,81 @@ class UploadHelperTests(unittest.TestCase):
         self.assertNotIn("machine_id", kwargs["json"])
         self.assertRegex(kwargs["headers"]["User-Agent"], r"^prismax-sdk/")
         self.assertEqual(kwargs["timeout"], 300)
+
+    def test_create_upload_session_includes_job_id_when_provided(self):
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = {"success": True, "data": {"upload_id": 1}}
+
+        with patch("prismax.client.requests.request", return_value=mock_response) as request_mock:
+            client = PrismaXClient(api_key="pxu_test", base_url="https://example.test")
+            client.create_upload_session(
+                task_id=12,
+                serial_number="MD100101000019205Z00082",
+                files=[],
+                job_id=42,
+            )
+
+        _, _, kwargs = request_mock.mock_calls[0]
+        self.assertEqual(kwargs["json"]["job_id"], 42)
+
+    def test_create_upload_session_omits_job_id_when_not_provided(self):
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = {"success": True, "data": {"upload_id": 1}}
+
+        with patch("prismax.client.requests.request", return_value=mock_response) as request_mock:
+            client = PrismaXClient(api_key="pxu_test", base_url="https://example.test")
+            client.create_upload_session(
+                task_id=12,
+                serial_number="MD100101000019205Z00082",
+                files=[],
+            )
+
+        _, _, kwargs = request_mock.mock_calls[0]
+        self.assertNotIn("job_id", kwargs["json"])
+
+    def test_list_jobs_hits_jobs_endpoint(self):
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = {
+            "success": True,
+            "data": [{"job_id": 7, "due_date": "2026-09-01", "rate_usd_per_hour": 25.0, "tasks": []}],
+        }
+
+        with patch("prismax.client.requests.request", return_value=mock_response) as request_mock:
+            result = list_jobs(api_key="pxu_test", base_url="https://example.test")
+
+        self.assertEqual(result, [{"job_id": 7, "due_date": "2026-09-01", "rate_usd_per_hour": 25.0, "tasks": []}])
+        args, kwargs = request_mock.call_args
+        self.assertEqual(args[:2], ("GET", "https://example.test/v1/data/jobs"))
+        self.assertEqual(kwargs["headers"]["X-API-Key"], "pxu_test")
+
+    def test_list_jobs_requires_upload_api_key_prefix(self):
+        with self.assertRaises(PrismaxAuthError):
+            list_jobs(api_key="pxa_wrong_prefix", base_url="https://example.test")
+
+    def test_upload_passes_job_id_through_to_client(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "1").mkdir()
+            (root / "1.mcap").write_bytes(b"mcap")
+            (root / "1" / "high.mp4").write_bytes(b"env")
+            (root / "1" / "left.mp4").write_bytes(b"left")
+            (root / "1" / "right.mp4").write_bytes(b"right")
+
+            mock_client = Mock()
+            mock_client.create_upload_session.return_value = {
+                "upload_id": 999,
+                "machine_id": "machine-1",
+                "signed_urls": [],
+            }
+            upload_module = importlib.import_module("prismax.upload")
+
+            with patch.object(upload_module, "PrismaXClient", return_value=mock_client):
+                upload(root, task_id=12, serial_number="serial", job_id=42, api_key="pxu_test")
+
+        self.assertEqual(mock_client.create_upload_session.call_args.kwargs["job_id"], 42)
 
     def test_regular_api_requests_keep_standard_timeout(self):
         mock_response = Mock()
@@ -607,6 +683,41 @@ class UploadHelperTests(unittest.TestCase):
             [call.args[0] for call in print_mock.call_args_list],
             ["Pick and place packaged food items", "Warehouse sorting"],
         )
+
+    def test_cli_jobs_prints_one_job_per_line(self):
+        jobs = [{
+            "job_id": 7,
+            "due_date": "2026-09-01",
+            "rate_usd_per_hour": 25.0,
+            "tasks": [{"task_id": 12, "task_name": "Pick and place", "assigned_hours": 10.0}],
+        }]
+
+        with patch("prismax.cli.list_jobs", return_value=jobs), patch("builtins.print") as print_mock:
+            exit_code = cli.main(["jobs"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            print_mock.call_args_list[0].args[0],
+            "7 | 2026-09-01 | 25.0 | Pick and place",
+        )
+
+    def test_cli_upload_threads_job_id_flag(self):
+        payload = {"upload_id": 342, "status": "UPLOADING"}
+
+        with patch("prismax.cli.upload", return_value=payload) as upload_mock, patch("builtins.print"):
+            exit_code = cli.main([
+                "upload",
+                "/tmp/data",
+                "--scenario",
+                "Pick and place packaged food items",
+                "--serial-number",
+                "MD100101000019205Z00082",
+                "--job-id",
+                "42",
+            ])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(upload_mock.call_args.kwargs["job_id"], 42)
 
     def test_cli_uploads_prints_recent_uploads(self):
         uploads = [{
