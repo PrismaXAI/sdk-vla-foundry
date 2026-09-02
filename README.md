@@ -95,6 +95,11 @@ Choose one of the following structures. The expected folder structure is the
 simplest option. Use JSON when your collection software needs an explicit,
 portable description of the files in each episode.
 
+> **Best practice:** Whenever possible, group all episodes from the same task
+> and robot into a single upload. Avoid creating one upload per episode; start
+> a new upload only when the task or robot changes, or when the batch exceeds
+> the upload file limit.
+
 ### Option A: Expected Folder Structure
 
 No JSON file is required when the source data already follows this layout:
@@ -426,7 +431,17 @@ prismax download pkg_your_package_id --output ./dataset
 
 The SDK downloads the MCAP, primary videos, and any additional videos returned
 by the package. It automatically sends the CDN cookie associated with each
-file.
+file. Download paths use the canonical PrismaX episode ID, for example:
+
+```text
+84521.mcap
+84521/high.mp4
+84521/left.mp4
+84521/right.mp4
+```
+
+The uploader's original episode key remains internal metadata and does not
+determine the downloaded filename.
 
 ## Additional Reference
 

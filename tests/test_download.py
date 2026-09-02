@@ -25,29 +25,29 @@ def _session_payload():
                 "episode_id": 8,
                 "assets": {
                     "mcap": {
-                        "relative_path": "episode_1.mcap",
+                        "relative_path": "8.mcap",
                         "url": "https://cdn.test/episode_1.mcap",
                         "auth": {"cookie_header": "cookie-mcap"},
                     },
                     "env": {
-                        "relative_path": "episode_1/high.mp4",
+                        "relative_path": "8/high.mp4",
                         "url": "https://cdn.test/high.mp4",
                         "auth": {"cookie_header": "cookie-high"},
                     },
                     "left": {
-                        "relative_path": "episode_1/left.mp4",
+                        "relative_path": "8/left.mp4",
                         "url": "https://cdn.test/left.mp4",
                         "auth": {"cookie_header": "cookie-left"},
                     },
                     "right": {
-                        "relative_path": "episode_1/right.mp4",
+                        "relative_path": "8/right.mp4",
                         "url": "https://cdn.test/right.mp4",
                         "auth": {"cookie_header": "cookie-right"},
                     },
                 },
                 "additional_videos": [
                     {
-                        "relative_path": "episode_1/wrist.mp4",
+                        "relative_path": "8/wrist.mp4",
                         "url": "https://cdn.test/wrist.mp4",
                         "auth": {"cookie_header": "cookie-wrist"},
                     }
@@ -141,11 +141,11 @@ class DownloadTests(unittest.TestCase):
         self.assertEqual(
             [item["relative_path"] for item in items],
             [
-                "episode_1.mcap",
-                "episode_1/high.mp4",
-                "episode_1/left.mp4",
-                "episode_1/right.mp4",
-                "episode_1/wrist.mp4",
+                "8.mcap",
+                "8/high.mp4",
+                "8/left.mp4",
+                "8/right.mp4",
+                "8/wrist.mp4",
             ],
         )
         self.assertEqual(
