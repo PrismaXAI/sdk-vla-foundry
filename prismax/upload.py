@@ -108,7 +108,23 @@ def _task_display_name(task):
     return f"task_id {task.get('task_id')}"
 
 
-def resolve_task_id(client, *, task_id=None, scenario=None, task_name=None):
+def _job_task_catalog(client, job_id):
+    """Task list for one job, regardless of the task's public visibility flag.
+
+    /v1/data/jobs already returns each job's tasks (task_id, task_name,
+    assigned_hours) irrespective of is_visible_beta/is_visible_production,
+    so job-scoped resolution reads from there instead of /data/tasks.
+    """
+    jobs = client.list_jobs() or []
+    for job in jobs:
+        if job.get("job_id") is not None and int(job["job_id"]) == int(job_id):
+            return job.get("tasks") or []
+    raise PrismaxValidationError(
+        f"No job found with job_id {job_id!r} for this API key."
+    )
+
+
+def resolve_task_id(client, *, task_id=None, scenario=None, task_name=None, job_id=None):
     if task_id is not None:
         try:
             return int(task_id)
@@ -120,7 +136,7 @@ def resolve_task_id(client, *, task_id=None, scenario=None, task_name=None):
     if not normalized_name:
         raise PrismaxValidationError("Either task_id or scenario is required.")
 
-    tasks = client.list_tasks()
+    tasks = _job_task_catalog(client, job_id) if job_id is not None else client.list_tasks()
     matches = []
     for task in tasks or []:
         candidate_values = [
@@ -135,8 +151,9 @@ def resolve_task_id(client, *, task_id=None, scenario=None, task_name=None):
     if not matches:
         available = ", ".join(_task_display_name(task) for task in (tasks or [])[:10])
         suffix = f" Available tasks include: {available}." if available else ""
+        scope = f" for job_id {job_id}" if job_id is not None else ""
         raise PrismaxValidationError(
-            f"No task found for scenario/task name: {requested_name!r}.{suffix}"
+            f"No task found for scenario/task name: {requested_name!r}{scope}.{suffix}"
         )
     if len(matches) > 1:
         choices = ", ".join(f"{_task_display_name(task)} (task_id {task.get('task_id')})" for task in matches)
@@ -171,12 +188,13 @@ def create_upload_session(
         concurrency=concurrency,
         retries=retries,
     )
+    resolved_job_id = job_id if job_id is not None else data_upload.job_id
     task_id = resolve_task_id(
         client,
         task_id=task_id,
         scenario=data_upload.scenario,
+        job_id=resolved_job_id,
     )
-    resolved_job_id = job_id if job_id is not None else data_upload.job_id
     session = client.create_upload_session(
         task_id=task_id,
         serial_number=data_upload.serial_number,
@@ -433,7 +451,7 @@ def upload(
     if errors:
         raise PrismaxValidationError("; ".join(errors))
 
-    task_id = resolve_task_id(client, task_id=task_id, scenario=scenario, task_name=task_name)
+    task_id = resolve_task_id(client, task_id=task_id, scenario=scenario, task_name=task_name, job_id=job_id)
     keys = episode_keys(files)
     session = client.create_upload_session(
         task_id=task_id,
