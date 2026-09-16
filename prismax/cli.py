@@ -53,15 +53,38 @@ def _print_uploads(uploads):
 
 
 def _print_jobs(jobs):
+    headers = ["Job ID", "Due Date", "Rate ($/hr)", "Payment Status", "Task ID", "Task Name", "Assigned Hours"]
+    rows = []
     for job in jobs:
-        task_names = ", ".join(task.get("task_name", "") for task in (job.get("tasks") or []))
-        values = [
+        job_values = [
             str(job.get("job_id") or ""),
             str(job.get("due_date") or ""),
             str(job.get("rate_usd_per_hour") or ""),
-            task_names,
+            str(job.get("payment_status") or ""),
         ]
-        print(" | ".join(values))
+        tasks = job.get("tasks") or []
+        if not tasks:
+            rows.append(job_values + ["", "", ""])
+            continue
+        for task in tasks:
+            rows.append(job_values + [
+                str(task.get("task_id") or ""),
+                str(task.get("task_name") or ""),
+                str(task.get("assigned_hours") or ""),
+            ])
+
+    widths = [
+        max(len(headers[i]), *(len(row[i]) for row in rows)) if rows else len(headers[i])
+        for i in range(len(headers))
+    ]
+
+    def _row(values):
+        return " | ".join(value.ljust(widths[i]) for i, value in enumerate(values))
+
+    print(_row(headers))
+    print("-+-".join("-" * w for w in widths))
+    for row in rows:
+        print(_row(row))
 
 
 def _print_download_summary(payload):
