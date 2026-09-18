@@ -31,6 +31,8 @@ def _content_type(path: Path) -> str:
         return "video/mp4"
     if suffix == ".json":
         return "application/json"
+    if suffix == ".urdf":
+        return "application/xml"
     guessed, _ = mimetypes.guess_type(str(path))
     return guessed or "application/octet-stream"
 
@@ -129,6 +131,7 @@ def validate_mcap_mp4(files: list[LocalFile]) -> list[str]:
                 "mcap_count": 0,
                 "mp4_count": 0,
                 "video_paths": [],
+                "urdf_count": 0,
             }
         return stats[episode_key]
 
@@ -145,6 +148,9 @@ def validate_mcap_mp4(files: list[LocalFile]) -> list[str]:
                 continue
             if folder_name.endswith(".mcap"):
                 errors.append(f"Video folder name must not end with .mcap: {folder_name}")
+                continue
+            if file_name.endswith(".urdf"):
+                ensure_episode(folder_name)["urdf_count"] += 1
                 continue
             if not file_name.endswith(".mp4"):
                 errors.append(f"Only .mp4 files are allowed inside episode folders: {relative_path}")
@@ -173,6 +179,8 @@ def validate_mcap_mp4(files: list[LocalFile]) -> list[str]:
 
     for episode_key in episode_keys:
         episode_stats = stats[episode_key]
+        if episode_stats["urdf_count"] > 1:
+            errors.append(f"Episode {episode_key} may contain at most one .urdf file.")
         if episode_stats["mcap_count"] != 1:
             errors.append(
                 f"Episode {episode_key} must have exactly 1 .mcap file "

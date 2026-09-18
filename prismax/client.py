@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -207,7 +208,19 @@ class PrismaXClient:
                 for item in upload_items
             }
             for future in as_completed(futures):
-                future.result()
+                try:
+                    future.result()
+                except PrismaxApiError:
+                    item = futures[future]
+                    if not str(item.get("relative_path") or "").endswith(".urdf"):
+                        raise
+                    logging.getLogger(__name__).warning(
+                        "Optional URDF upload failed: %s; continuing with episode data.",
+                        item["relative_path"],
+                    )
+                    if on_file_complete:
+                        on_file_complete({**item, "optional_upload_failed": True})
+                    continue
                 if on_file_complete:
                     on_file_complete(futures[future])
 

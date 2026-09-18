@@ -264,7 +264,7 @@ class DataUpload:
             for source_path, relative_path in episode_files:
                 resolved_source = str(source_path.resolve())
                 previous_owner = source_owners.get(resolved_source)
-                if previous_owner is not None:
+                if previous_owner is not None and source_path.suffix != ".urdf":
                     raise PrismaxValidationError(
                         f"Source file is assigned more than once: {source_path} "
                         f"({previous_owner} and {relative_path})."
@@ -315,10 +315,14 @@ class DataUpload:
         layout = _require_mapping(episode_set.get("file_layout"), "file_layout")
         _require_only_keys(
             layout,
-            {"mcap", "primary_videos", "additional_videos"},
+            {"mcap", "primary_videos", "additional_videos", "urdf"},
             "file_layout",
         )
         mcap_template = _source_path_from_asset(layout.get("mcap"), "file_layout.mcap")
+        urdf_template = (
+            _source_path_from_asset(layout["urdf"], "file_layout.urdf")
+            if layout.get("urdf") is not None else None
+        )
         primary = self._parse_primary_assets(
             layout.get("primary_videos"), "file_layout.primary_videos"
         )
@@ -357,7 +361,11 @@ class DataUpload:
             result.append((
                 episode_key,
                 self._build_episode_files(
-                    episode_key, mcap_path, primary_paths, additional_paths
+                    episode_key, mcap_path, primary_paths, additional_paths,
+                    self._resolve_source(
+                        self._render(urdf_template, episode_key),
+                        f"episode {episode_key} urdf", ".urdf",
+                    ) if urdf_template is not None else None,
                 ),
             ))
         return result
@@ -381,7 +389,7 @@ class DataUpload:
             assets = _require_mapping(episode.get("assets"), f"{label}.assets")
             _require_only_keys(
                 assets,
-                {"mcap", "primary_videos", "additional_videos"},
+                {"mcap", "primary_videos", "additional_videos", "urdf"},
                 f"{label}.assets",
             )
             mcap_path = self._resolve_source(
@@ -425,7 +433,11 @@ class DataUpload:
             parsed.append((
                 episode_key,
                 self._build_episode_files(
-                    episode_key, mcap_path, primary_paths, additional_paths
+                    episode_key, mcap_path, primary_paths, additional_paths,
+                    self._resolve_source(
+                        _source_path_from_asset(assets["urdf"], f"{label}.assets.urdf"),
+                        f"episode {episode_key} urdf", ".urdf",
+                    ) if assets.get("urdf") is not None else None,
                 ),
             ))
         self._validate_unique_episode_keys(keys)
@@ -445,7 +457,7 @@ class DataUpload:
         }
 
     def _build_episode_files(
-        self, episode_key, mcap_path, primary_paths, additional_paths
+        self, episode_key, mcap_path, primary_paths, additional_paths, urdf_path=None
     ):
         assigned_primary = {path.resolve() for path in primary_paths.values()}
         if len(assigned_primary) != len(PRIMARY_DESTINATIONS):
@@ -453,6 +465,8 @@ class DataUpload:
                 f"Episode {episode_key} must use a different source file for each primary video."
             )
         files = [(mcap_path, f"{episode_key}.mcap")]
+        if urdf_path is not None:
+            files.append((urdf_path, f"{episode_key}/{urdf_path.name}"))
         files.extend(
             (primary_paths[slot], f"{episode_key}/{destination}")
             for slot, destination in PRIMARY_DESTINATIONS.items()

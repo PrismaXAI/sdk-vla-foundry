@@ -68,6 +68,7 @@ def _download_items(session, output):
             assets.get("env"),
             assets.get("left"),
             assets.get("right"),
+            assets.get("urdf"),
             *(sample.get("additional_videos") or []),
         ]
         for asset in ordered_assets:

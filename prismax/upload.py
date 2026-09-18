@@ -44,7 +44,10 @@ class _FileProgress:
 
     def file_completed(self, item):
         self.completed_files += 1
-        self._print(item.get("relative_path") or "file uploaded")
+        detail = item.get("relative_path") or "file uploaded"
+        if item.get("optional_upload_failed"):
+            detail = f"{detail} skipped (optional upload failed)"
+        self._print(detail)
 
     def episode_completed(self, episode_key):
         self.completed_episodes += 1

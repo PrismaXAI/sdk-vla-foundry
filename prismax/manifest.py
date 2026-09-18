@@ -22,6 +22,9 @@ def build_manifest_payload(
     episode_files = []
     for item in files:
         relative_path = item.relative_path
+        # Optional robot descriptions are transported separately from worker inputs.
+        if relative_path.endswith(".urdf"):
+            continue
         if relative_path == f"{episode_key}.mcap" or relative_path.startswith(f"{episode_key}/"):
             episode_files.append(item.as_api_payload())
 

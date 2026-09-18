@@ -134,6 +134,58 @@ Exact primary names are preferred. For example, `high.mp4`, `left.mp4`, and
 `right.mp4` are selected before `high2.mp4`, `left2.mp4`, and `right2.mp4`.
 All remaining MP4 files are additional videos.
 
+Each episode folder may also contain **one optional `.urdf` file**, with its
+original filename. It is uploaded alongside the videos but is excluded from
+the worker manifest; it is not processed or used to determine episode success.
+URDF transfer errors are logged and skipped. Resume can retry a missing URDF
+while the upload is still `UPLOADING`, without resubmitting an existing worker
+manifest just for that file. There is no separate URDF repair step after completion.
+
+### Flat Capture Folders And Optional URDF
+
+If your recorder writes all files into one folder, use `DataUpload`'s existing
+`source_path` mapping. You do not need to move or rename source files. For example,
+given `30361/telemetry.webui.mcap`, `30361/cam_high.mp4`,
+`30361/cam_left_wrist.mp4`, `30361/cam_right_wrist.mp4`, and
+`30361/dual_yam_platform_d405_d435.urdf`:
+
+```python
+import prismax
+
+data = prismax.DataUpload.from_dict({
+    "scenario": "SCENARIO_NAME",
+    "robot": {"serial_number": "ROBOT_SERIAL_NUMBER"},
+    "episode_set": {
+        "mode": "templated",
+        "episode_keys": ["30361"],
+        "file_layout": {
+            "mcap": {"source_path": "{episode_key}/telemetry.webui.mcap"},
+            "primary_videos": {
+                "env": {"source_path": "{episode_key}/cam_high.mp4"},
+                "left": {"source_path": "{episode_key}/cam_left_wrist.mp4"},
+                "right": {"source_path": "{episode_key}/cam_right_wrist.mp4"},
+            },
+            "urdf": {"source_path": "{episode_key}/dual_yam_platform_d405_d435.urdf"},
+        },
+    },
+}, base_path="/path/to/captures")  # parent directory containing 30361/
+
+upload_id = prismax.create_upload_session(data)
+result = prismax.upload_session(upload_id, data)
+```
+
+For different URDF filenames or a mixture of episodes with/without URDF, use
+explicit mode and add `"urdf": {"source_path": ".../robot.urdf"}` to the relevant
+episode's `assets`. Omit `urdf` for episodes without one. A shared source URDF
+can be mapped to multiple episodes; each gets its own stored copy. A declared
+source path must exist when the spec is loaded (only transfer failures are optional).
+
+Downloads automatically include an available URDF at
+`{episode_id}/{original_filename}.urdf`, using the database episode ID so files
+from different uploads cannot overwrite each other. Old episodes and failed
+URDF uploads simply have no URDF download. This feature transports the single
+URDF file as-is; it does not resolve or bundle referenced meshes or textures.
+
 ### Option B: Templated JSON
 
 Use templated JSON when all episodes follow the same source layout. Create a
