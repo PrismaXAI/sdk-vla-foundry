@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "prismax"
-version = "0.3.0b1"
+version = "0.3.1"
 description = "PrismaX Python SDK for robotic data uploads and downloads"
 readme = "README.md"
 requires-python = ">=3.9"

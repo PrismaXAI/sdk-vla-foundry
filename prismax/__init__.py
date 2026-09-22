@@ -22,7 +22,7 @@ from .upload import (
     wait_for_upload,
 )
 
-__version__ = "0.3.0b1"
+__version__ = "0.3.1"
 
 __all__ = [
     "PrismaXClient",

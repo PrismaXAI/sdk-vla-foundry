@@ -814,11 +814,12 @@ class UploadHelperTests(unittest.TestCase):
             ["Pick and place packaged food items", "Warehouse sorting"],
         )
 
-    def test_cli_jobs_prints_one_job_per_line(self):
+    def test_cli_jobs_prints_table_with_payment_status(self):
         jobs = [{
             "job_id": 7,
             "due_date": "2026-09-01",
             "rate_usd_per_hour": 25.0,
+            "payment_status": "paid",
             "tasks": [{"task_id": 12, "task_name": "Pick and place", "assigned_hours": 10.0}],
         }]
 
@@ -826,9 +827,15 @@ class UploadHelperTests(unittest.TestCase):
             exit_code = cli.main(["jobs"])
 
         self.assertEqual(exit_code, 0)
+        printed = [call.args[0] for call in print_mock.call_args_list]
+        self.assertEqual(len(printed), 3)
         self.assertEqual(
-            print_mock.call_args_list[0].args[0],
-            "7 | 2026-09-01 | 25.0 | Pick and place",
+            [cell.strip() for cell in printed[0].split("|")],
+            ["Job ID", "Due Date", "Rate ($/hr)", "Payment Status", "Task ID", "Task Name", "Assigned Hours"],
+        )
+        self.assertEqual(
+            [cell.strip() for cell in printed[2].split("|")],
+            ["7", "2026-09-01", "25.0", "paid", "12", "Pick and place", "10.0"],
         )
 
     def test_cli_upload_threads_job_id_flag(self):
