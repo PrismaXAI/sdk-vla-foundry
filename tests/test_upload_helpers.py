@@ -158,7 +158,7 @@ class UploadHelperTests(unittest.TestCase):
             files = scan_folder(root)
             errors = validate_mcap_mp4(files)
 
-            self.assertTrue(any("Only .mp4 files are allowed" in error for error in errors))
+            self.assertTrue(any("Only .mp4 and .urdf files are allowed" in error for error in errors))
 
     def test_validate_rejects_case_insensitive_path_collision(self):
         with tempfile.TemporaryDirectory() as tmp:

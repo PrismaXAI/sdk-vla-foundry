@@ -153,7 +153,7 @@ def validate_mcap_mp4(files: list[LocalFile]) -> list[str]:
                 ensure_episode(folder_name)["urdf_count"] += 1
                 continue
             if not file_name.endswith(".mp4"):
-                errors.append(f"Only .mp4 files are allowed inside episode folders: {relative_path}")
+                errors.append(f"Only .mp4 and .urdf files are allowed inside episode folders (extensions must be lowercase): {relative_path}")
                 continue
             episode_stats = ensure_episode(folder_name)
             episode_stats["mp4_count"] += 1
