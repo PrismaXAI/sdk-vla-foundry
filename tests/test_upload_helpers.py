@@ -322,13 +322,16 @@ class UploadHelperTests(unittest.TestCase):
         mock_response.ok = True
         mock_response.json.return_value = {
             "success": True,
-            "data": [{"job_id": 7, "due_date": "2026-09-01", "rate_usd_per_hour": 25.0, "tasks": []}],
+            "data": [{"job_id": 7, "job_name": "Biology batch", "due_date": "2026-09-01", "rate_usd_per_hour": 25.0, "tasks": []}],
         }
 
         with patch("prismax.client.requests.request", return_value=mock_response) as request_mock:
             result = list_jobs(api_key="pxu_test", base_url="https://example.test")
 
-        self.assertEqual(result, [{"job_id": 7, "due_date": "2026-09-01", "rate_usd_per_hour": 25.0, "tasks": []}])
+        self.assertEqual(
+            result,
+            [{"job_id": 7, "job_name": "Biology batch", "due_date": "2026-09-01", "rate_usd_per_hour": 25.0, "tasks": []}],
+        )
         args, kwargs = request_mock.call_args
         self.assertEqual(args[:2], ("GET", "https://example.test/v1/data/jobs"))
         self.assertEqual(kwargs["headers"]["X-API-Key"], "pxu_test")
@@ -817,6 +820,7 @@ class UploadHelperTests(unittest.TestCase):
     def test_cli_jobs_prints_table_with_payment_status(self):
         jobs = [{
             "job_id": 7,
+            "job_name": "Biology batch",
             "due_date": "2026-09-01",
             "rate_usd_per_hour": 25.0,
             "payment_status": "paid",
@@ -831,11 +835,46 @@ class UploadHelperTests(unittest.TestCase):
         self.assertEqual(len(printed), 3)
         self.assertEqual(
             [cell.strip() for cell in printed[0].split("|")],
-            ["Job ID", "Due Date", "Rate ($/hr)", "Payment Status", "Task ID", "Task Name", "Assigned Hours"],
+            ["Job ID", "Job Name", "Due Date", "Rate ($/hr)", "Payment Status", "Task ID", "Task Name", "Assigned Hours"],
         )
         self.assertEqual(
             [cell.strip() for cell in printed[2].split("|")],
-            ["7", "2026-09-01", "25.0", "paid", "12", "Pick and place", "10.0"],
+            ["7", "Biology batch", "2026-09-01", "25.0", "paid", "12", "Pick and place", "10.0"],
+        )
+
+    def test_cli_jobs_leaves_job_name_blank_when_missing(self):
+        jobs = [
+            {
+                "job_id": 7,
+                "job_name": None,
+                "due_date": "2026-09-01",
+                "rate_usd_per_hour": 25.0,
+                "payment_status": "unpaid",
+                "tasks": [{"task_id": 12, "task_name": "Pick and place", "assigned_hours": 10.0}],
+            },
+            {
+                "job_id": 8,
+                "job_name": "No tasks yet",
+                "due_date": "2026-09-02",
+                "rate_usd_per_hour": 18.5,
+                "payment_status": "unpaid",
+                "tasks": [],
+            },
+        ]
+
+        with patch("prismax.cli.list_jobs", return_value=jobs), patch("builtins.print") as print_mock:
+            exit_code = cli.main(["jobs"])
+
+        self.assertEqual(exit_code, 0)
+        printed = [call.args[0] for call in print_mock.call_args_list]
+        self.assertEqual(len(printed), 4)
+        self.assertEqual(
+            [cell.strip() for cell in printed[2].split("|")],
+            ["7", "", "2026-09-01", "25.0", "unpaid", "12", "Pick and place", "10.0"],
+        )
+        self.assertEqual(
+            [cell.strip() for cell in printed[3].split("|")],
+            ["8", "No tasks yet", "2026-09-02", "18.5", "unpaid", "", "", ""],
         )
 
     def test_cli_upload_threads_job_id_flag(self):

@@ -53,11 +53,12 @@ def _print_uploads(uploads):
 
 
 def _print_jobs(jobs):
-    headers = ["Job ID", "Due Date", "Rate ($/hr)", "Payment Status", "Task ID", "Task Name", "Assigned Hours"]
+    headers = ["Job ID", "Job Name", "Due Date", "Rate ($/hr)", "Payment Status", "Task ID", "Task Name", "Assigned Hours"]
     rows = []
     for job in jobs:
         job_values = [
             str(job.get("job_id") or ""),
+            str(job.get("job_name") or ""),
             str(job.get("due_date") or ""),
             str(job.get("rate_usd_per_hour") or ""),
             str(job.get("payment_status") or ""),
