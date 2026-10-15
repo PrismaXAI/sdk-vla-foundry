@@ -64,8 +64,8 @@ Create and find these in the PrismaX app:
   `prismax.list_scenarios()`.
 - **Robot serial number:** open <https://app.prismax.ai/account> and use the
   serial number of the registered Operator machine that produced the data.
-- **Job ID:** if you were assigned a job, retrieve its ID and assigned tasks
-  with `prismax.list_jobs()`. This requires your upload API key. A job's
+- **Job ID:** if you were assigned a job, retrieve its ID, name, and assigned
+  tasks with `prismax.list_jobs()`. This requires your upload API key. A job's
   tasks are the only task scenarios that upload is allowed to use.
 
 Download API keys are not valid for uploads. The backend verifies that the
@@ -401,7 +401,7 @@ with `prismax.list_jobs()`:
 
 ```python
 for job in prismax.list_jobs():
-    print(job["job_id"], job["due_date"], job["tasks"])
+    print(job["job_id"], job["job_name"], job["due_date"], job["tasks"])
 ```
 
 ## 4. Check Status And Resume
@@ -513,6 +513,9 @@ List jobs assigned to you:
 ```bash
 prismax jobs
 ```
+
+The table lists each job's ID, name (blank if the job has no name), due date,
+rate, payment status, and tasks.
 
 Upload the expected folder structure:
 
