@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, Mock, patch
 from prismax import cli
 from prismax.client import PrismaXClient
 from prismax.download import create_download_session, download
-from prismax.errors import PrismaxAuthError
+from prismax.errors import PrismaxApiError, PrismaxAuthError
 from prismax.upload import status
 
 
@@ -184,6 +184,45 @@ class DownloadTests(unittest.TestCase):
             get_mock.call_args.kwargs["headers"],
             {"Cookie": "asset-cookie"},
         )
+
+    def test_download_preserves_skipped_details_and_downloads_remaining_files(self):
+        client = Mock()
+        session = _session_payload()
+        session.update(skipped_episodes=[{"episode_id": 9, "status": "QA_REJECTED"}],
+                       skipped_episode_ids=[9], skipped_episode_count=1)
+        client.create_download_session.return_value = session
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            download_module, "PrismaXClient", return_value=client
+        ):
+            result = download("pkg_test", tmp, api_key="pxa_download", progress=False)
+        client.create_download_session.assert_called_once_with(package_id="pkg_test")
+        self.assertEqual(len(client.download_files.call_args.args[0]), 5)
+        self.assertEqual(result["episode_count"], 1)
+        self.assertEqual(result["skipped_episodes"], session["skipped_episodes"])
+        self.assertEqual(result["skipped_episode_ids"], [9])
+        self.assertEqual(result["skipped_episode_count"], 1)
+        with patch("prismax.cli.download", return_value=result), patch("builtins.print") as printed:
+            self.assertEqual(cli.main(["download", "pkg_test", "--output", "./dataset"]), 0)
+        output = "\n".join(call.args[0] for call in printed.call_args_list)
+        self.assertIn("Skipped unavailable episodes: 1", output)
+        self.assertIn("Episode 9: QA_REJECTED", output)
+
+    def test_all_unavailable_api_error_retains_details_and_cli_reports_them(self):
+        response = Mock(ok=False, status_code=400)
+        response.json.return_value = {
+            "success": False, "msg": "Package has no downloadable episodes.",
+            "skipped_episodes": [{"episode_id": 9, "status": "QA_REJECTED"}],
+            "skipped_episode_ids": [9], "skipped_episode_count": 1,
+        }
+        with patch("prismax.client.requests.request", return_value=response):
+            with self.assertRaises(PrismaxApiError) as raised:
+                create_download_session("pkg_test", api_key="pxa_download")
+        self.assertEqual(raised.exception.details["skipped_episode_ids"], [9])
+        with patch("prismax.cli.download", side_effect=raised.exception), patch("builtins.print") as printed:
+            self.assertEqual(cli.main(["download", "pkg_test", "--output", "./dataset"]), 1)
+        output = "\n".join(call.args[0] for call in printed.call_args_list)
+        self.assertIn("Package has no downloadable episodes", output)
+        self.assertIn("Episode 9: QA_REJECTED", output)
 
     def test_cli_download_prints_summary(self):
         result = {

@@ -88,6 +88,14 @@ def _print_jobs(jobs):
         print(_row(row))
 
 
+def _print_skipped_episodes(payload, *, file=None):
+    skipped = payload.get("skipped_episodes") or []
+    if skipped:
+        print(f"Skipped unavailable episodes: {len(skipped)}", file=file)
+        for episode in skipped:
+            print(f"  Episode {episode['episode_id']}: {episode['status']}", file=file)
+
+
 def _print_download_summary(payload):
     fields = [
         ("Download ID", payload.get("download_id")),
@@ -99,6 +107,7 @@ def _print_download_summary(payload):
     for label, value in fields:
         if value is not None:
             print(f"{label}: {value}")
+    _print_skipped_episodes(payload)
 
 
 def main(argv=None):
@@ -398,6 +407,7 @@ def main(argv=None):
             return 0
     except PrismaxError as exc:
         print(f"prismax: {exc}", file=sys.stderr)
+        _print_skipped_episodes(exc.details, file=sys.stderr)
         return 1
 
     parser.error(f"Unknown command: {args.command}")

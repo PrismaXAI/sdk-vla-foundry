@@ -157,4 +157,7 @@ def download(
         "episode_count": len(session.get("samples") or []),
         "file_count": len(items),
         "output": str(output_path),
+        "skipped_episodes": session.get("skipped_episodes") or [],
+        "skipped_episode_ids": session.get("skipped_episode_ids") or [],
+        "skipped_episode_count": len(session.get("skipped_episodes") or []),
     }

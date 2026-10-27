@@ -495,6 +495,13 @@ file. Download paths use the canonical PrismaX episode ID, for example:
 The uploader's original episode key remains internal metadata and does not
 determine the downloaded filename.
 
+If episodes become unavailable after a package is created (for example, after
+QA rejection), the same package ID downloads the remaining available episodes.
+The CLI lists skipped episode IDs and statuses. Python results include
+`skipped_episodes`, `skipped_episode_ids`, and `skipped_episode_count`.
+If every episode is unavailable, the download fails with these details instead
+of creating an empty download. The package's original selection is preserved.
+
 ## Additional Reference
 
 The following sections are optional references after completing the main upload

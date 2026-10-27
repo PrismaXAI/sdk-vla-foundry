@@ -100,9 +100,14 @@ class PrismaXClient:
 
         if not response.ok or payload.get("success") is False:
             message = payload.get("msg") or payload.get("error") or f"PrismaX API request failed: {response.status_code}"
+            details = {
+                key: payload[key]
+                for key in ("skipped_episodes", "skipped_episode_ids", "skipped_episode_count")
+                if key in payload
+            }
             if response.status_code in (401, 403):
-                raise PrismaxAuthError(message)
-            raise PrismaxApiError(message)
+                raise PrismaxAuthError(message, details=details)
+            raise PrismaxApiError(message, details=details)
         return payload.get("data", payload)
 
     def create_upload_session(self, *, task_id, serial_number, files, job_id=None):
