@@ -55,7 +55,14 @@ def _safe_destination(output, relative_path):
         raise PrismaxValidationError(
             f"Invalid download relative_path: {relative_path!r}."
         )
-    return output.joinpath(*path.parts)
+    destination = output.joinpath(*path.parts)
+    # On Windows a part like "D:" carries a drive, and joining it discards
+    # output, so the checks above are not enough on their own.
+    if output not in destination.parents:
+        raise PrismaxValidationError(
+            f"Invalid download relative_path: {relative_path!r}."
+        )
+    return destination
 
 
 def _download_items(session, output):

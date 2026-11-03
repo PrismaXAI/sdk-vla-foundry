@@ -2,13 +2,13 @@ import importlib
 import os
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from unittest.mock import MagicMock, Mock, patch
 
 from prismax import cli
 from prismax.client import PrismaXClient
 from prismax.download import create_download_session, download
-from prismax.errors import PrismaxAuthError
+from prismax.errors import PrismaxAuthError, PrismaxValidationError
 from prismax.upload import status
 
 
@@ -157,6 +157,24 @@ class DownloadTests(unittest.TestCase):
                 "cookie-right",
                 "cookie-wrist",
             ],
+        )
+
+    def test_safe_destination_rejects_drive_qualified_paths(self):
+        # PureWindowsPath joins with Windows rules on every platform: a part
+        # like "D:" carries a drive and replaces the output folder.
+        output = PureWindowsPath("C:/dataset")
+        for relative_path in ("D:/elsewhere/8.mcap", "D:8.mcap", "D:\\elsewhere\\8.mcap"):
+            with self.subTest(relative_path=relative_path):
+                with self.assertRaises(PrismaxValidationError):
+                    download_module._safe_destination(output, relative_path)
+
+        self.assertEqual(
+            download_module._safe_destination(output, "8/left.mp4"),
+            PureWindowsPath("C:/dataset/8/left.mp4"),
+        )
+        self.assertEqual(
+            download_module._safe_destination(Path("dataset"), "8.mcap"),
+            Path("dataset/8.mcap"),
         )
 
     def test_client_sends_cookie_and_writes_download(self):
